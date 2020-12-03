@@ -1,10 +1,6 @@
 use advent::helpers;
 extern crate nom;
 
-fn char_to_index(c: &u8) -> usize {
-    (c - 'a' as u8) as usize
-}
-
 #[derive(Debug)]
 struct ValidityArgs<'a> {
     password: &'a str,
@@ -46,12 +42,8 @@ fn is_password_valid(args: &ValidityArgs) -> bool {
         low,
         high,
     } = *args;
-    let mut char_counter: [i32; 26] = [0; 26];
-    password
-        .as_bytes()
-        .iter()
-        .for_each(|c| char_counter[char_to_index(c)] += 1);
-    let count = char_counter[char_to_index(&needle) as usize];
+
+    let count = password.as_bytes().iter().filter(|&&c| c == needle).count() as i32;
     if count >= low && count <= high {
         true
     } else {
@@ -59,17 +51,47 @@ fn is_password_valid(args: &ValidityArgs) -> bool {
     }
 }
 
+fn is_password_valid_p2(args: &ValidityArgs) -> bool {
+    let ValidityArgs {
+        password,
+        needle,
+        low,
+        high,
+    } = *args;
+    let positions: [usize; 2] = [low as usize, high as usize];
+    let password_bytes = password.as_bytes();
+    let target_char_counter: usize = positions
+        .iter()
+        .filter(|pos| password_bytes[*pos - 1] == needle)
+        .count();
+    target_char_counter == 1
+}
+
 fn solve_p1() {
-    let mut valid_passwords: i64 = 0;
     let data = helpers::get_data_from_file("d2").expect("Coudn't read file contents.");
-    data.lines().for_each(|line| {
-        let (_, args) = parse_password_and_policy(line).expect("Couldn't parse line");
-        let is_valid = is_password_valid(&args);
-        if is_valid {
-            valid_passwords += 1;
-        }
-    });
+    let valid_passwords: usize = data
+        .lines()
+        .filter(|line| {
+            let (_, args) = parse_password_and_policy(line).expect("Couldn't parse line");
+            is_password_valid(&args)
+        })
+        .count();
     println!("The number of valid passwords is: {}", valid_passwords);
+}
+
+fn solve_p2() {
+    let data = helpers::get_data_from_file("d2").expect("Coudn't read file contents.");
+    let valid_passwords: usize = data
+        .lines()
+        .filter(|line| {
+            let (_, args) = parse_password_and_policy(line).expect("Couldn't parse line");
+            is_password_valid_p2(&args)
+        })
+        .count();
+    println!(
+        "The number of valid passwords for part 2 is: {}",
+        valid_passwords
+    );
 }
 
 #[test]
@@ -110,6 +132,45 @@ fn test_p1() {
     });
 }
 
+#[test]
+fn test_p2() {
+    let cases = vec![
+        (
+            ValidityArgs {
+                password: "abcde",
+                needle: 'a' as u8,
+                low: 1,
+                high: 3,
+            },
+            true,
+        ),
+        (
+            ValidityArgs {
+                password: "cdefg",
+                needle: 'b' as u8,
+                low: 1,
+                high: 3,
+            },
+            false,
+        ),
+        (
+            ValidityArgs {
+                password: "ccccccccc",
+                needle: 'c' as u8,
+                low: 2,
+                high: 9,
+            },
+            false,
+        ),
+    ];
+
+    cases.iter().for_each(|(c, expected_result)| {
+        let is_valid = is_password_valid_p2(c);
+        assert_eq!(is_valid, *expected_result);
+    });
+}
+
 fn main() {
     solve_p1();
+    solve_p2();
 }
