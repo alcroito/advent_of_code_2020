@@ -20,9 +20,13 @@ path = "src/d2.rs"
 name = "d3"
 path = "src/d3.rs"
 
+[[bin]]
+name = "d4"
+path = "src/d4.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 more-asserts = "0.2.1"
+itertools = "0.9"
 nom = "6"
