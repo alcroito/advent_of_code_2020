@@ -14,6 +14,11 @@ pub mod helpers {
         contents
     }
 
+    pub fn get_data_from_file_res(name: &str) -> std::io::Result<String> {
+        let path = format!("data/{}.txt", name);
+        fs::read_to_string(path) 
+    }
+
     pub fn lines_to_longs(contents: &str) -> Vec<i64> {
         let mut ints = Vec::new();
         for s in contents.split_ascii_whitespace() {
