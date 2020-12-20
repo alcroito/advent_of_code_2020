@@ -17,7 +17,7 @@ impl PartialEq for TwoNums {
 fn find_two_numbers_sum(target_sum: i64, numbers: &[i64]) -> Option<TwoNums> {
     let mut complements = HashSet::new();
     for number in numbers.iter() {
-        if complements.len() == 0 {
+        if complements.is_empty() {
             complements.insert(number);
         } else {
             let complement: i64 = target_sum - number;
@@ -64,7 +64,7 @@ impl PartialEq for ThreeNums {
         let mut v2 = vec![other.0, other.1, other.2];
         v1.sort_unstable();
         v2.sort_unstable();
-        return v1 == v2;
+        v1 == v2
     }
 }
 

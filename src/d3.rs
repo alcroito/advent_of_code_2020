@@ -60,7 +60,7 @@ impl From<&str> for Grid {
             }
             grid.push(row);
         }
-        Grid { grid: grid }
+        Grid { grid }
     }
 }
 

@@ -26,11 +26,8 @@ impl<'a, I> nom::error::ParseError<I> for MyParseError<'a, I> {
     }
 
     fn append(input: I, kind: nom::error::ErrorKind, mut other: Self) -> Self {
-        match other {
-            MyParseError::Nom(nom::error::VerboseError { ref mut errors }) => {
-                errors.push((input, nom::error::VerboseErrorKind::Nom(kind)))
-            }
-            _ => (),
+        if let MyParseError::Nom(nom::error::VerboseError { ref mut errors }) = other {
+            errors.push((input, nom::error::VerboseErrorKind::Nom(kind)))
         };
         other
     }
@@ -108,11 +105,8 @@ fn play() {
 
     let input = "hello:fa";
     let parsed = parse_field_verbose_error(input);
-    match parsed {
-        Err(nom::Err::Error(e)) => {
-            eprintln!("errors were: {}", nom::error::convert_error(input, e));
-        }
-        _ => (),
+    if let Err(nom::Err::Error(e)) = parsed {
+        eprintln!("errors were: {}", nom::error::convert_error(input, e));
     }
 }
 
@@ -140,11 +134,7 @@ fn play2() {
     let _parsed = "123"
         .parse::<i32>()
         .map_err(|_| "parse error")
-        .and_then(|val| {
-            Some(val)
-                .filter(|&x| x < 4)
-                .ok_or_else(|| "Not a good number")
-        });
+        .and_then(|val| Some(val).filter(|&x| x < 4).ok_or("Not a good number"));
 
     // Advised code.
     let _parsed = match "123".parse::<i32>() {

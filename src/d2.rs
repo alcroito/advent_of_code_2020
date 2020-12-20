@@ -24,7 +24,7 @@ fn parse_password_and_policy(i: &str) -> nom::IResult<&str, ValidityArgs> {
     let (i, _) = nom::character::complete::char(':')(i)?;
     let (i, _) = nom::character::complete::space1(i)?;
     let (i, password) = nom::character::complete::alpha1(i)?;
-    return Ok((
+    Ok((
         i,
         ValidityArgs {
             password,
@@ -32,7 +32,7 @@ fn parse_password_and_policy(i: &str) -> nom::IResult<&str, ValidityArgs> {
             low,
             high,
         },
-    ));
+    ))
 }
 
 fn is_password_valid(args: &ValidityArgs) -> bool {
@@ -44,11 +44,7 @@ fn is_password_valid(args: &ValidityArgs) -> bool {
     } = *args;
 
     let count = password.as_bytes().iter().filter(|&&c| c == needle).count() as i32;
-    if count >= low && count <= high {
-        true
-    } else {
-        false
-    }
+    count >= low && count <= high
 }
 
 fn is_password_valid_p2(args: &ValidityArgs) -> bool {
@@ -100,7 +96,7 @@ fn test_p1() {
         (
             ValidityArgs {
                 password: "abcde",
-                needle: 'a' as u8,
+                needle: b'a',
                 low: 1,
                 high: 3,
             },
@@ -109,7 +105,7 @@ fn test_p1() {
         (
             ValidityArgs {
                 password: "cdefg",
-                needle: 'b' as u8,
+                needle: b'b',
                 low: 1,
                 high: 3,
             },
@@ -118,7 +114,7 @@ fn test_p1() {
         (
             ValidityArgs {
                 password: "ccccccccc",
-                needle: 'c' as u8,
+                needle: b'c',
                 low: 2,
                 high: 9,
             },
@@ -138,7 +134,7 @@ fn test_p2() {
         (
             ValidityArgs {
                 password: "abcde",
-                needle: 'a' as u8,
+                needle: b'a',
                 low: 1,
                 high: 3,
             },
@@ -147,7 +143,7 @@ fn test_p2() {
         (
             ValidityArgs {
                 password: "cdefg",
-                needle: 'b' as u8,
+                needle: b'b',
                 low: 1,
                 high: 3,
             },
@@ -156,7 +152,7 @@ fn test_p2() {
         (
             ValidityArgs {
                 password: "ccccccccc",
-                needle: 'c' as u8,
+                needle: b'c',
                 low: 2,
                 high: 9,
             },

@@ -6,16 +6,16 @@ type Res = Result<u8, BoxedError>;
 
 fn row_op_to_binary(c: &u8) -> Res {
     match *c as char {
-        'F' => Ok('0' as u8),
-        'B' => Ok('1' as u8),
+        'F' => Ok(b'0'),
+        'B' => Ok(b'1'),
         _ => Err(From::from(format!("Invalid row op: '{}'", *c as char))),
     }
 }
 
 fn col_op_to_binary(c: &u8) -> Res {
     match *c as char {
-        'L' => Ok('0' as u8),
-        'R' => Ok('1' as u8),
+        'L' => Ok(b'0'),
+        'R' => Ok(b'1'),
         _ => Err(From::from(format!("Invalid col op: '{}'", *c as char))),
     }
 }
@@ -25,7 +25,7 @@ where
     F: FnMut(&u8) -> Res,
 {
     let binary_vec = s.as_bytes()[r]
-        .into_iter()
+        .iter()
         .map(op_mapper)
         .collect::<Result<Vec<_>, _>>()?;
     let binary_string = std::str::from_utf8(&binary_vec)?;
@@ -112,7 +112,7 @@ fn solve_p2() -> Result<u32, BoxedError> {
     let needle_seat = missing_seats[0];
     println!("Your seat id is: {:?}", needle_seat);
     assert_eq!(needle_seat, Some(743));
-    needle_seat.ok_or("No empty seat found.".into())
+    needle_seat.ok_or_else(|| "No empty seat found.".into())
 }
 
 fn handle_error<T>(r: Result<T, BoxedError>) {

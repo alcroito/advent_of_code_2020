@@ -4,14 +4,13 @@ pub mod helpers {
     pub fn get_data_from_file(name: &str) -> Option<String> {
         let path = format!("data/{}.txt", name);
 
-        let contents = match fs::read_to_string(path) {
+        match fs::read_to_string(path) {
             Ok(s) => Some(s),
             Err(e) => {
                 println!("Error reading data: {}", e);
                 None
             }
-        };
-        contents
+        }
     }
 
     pub fn get_data_from_file_res(name: &str) -> std::io::Result<String> {
@@ -27,7 +26,7 @@ pub mod helpers {
         ints
     }
 
-    pub fn ints_to_longs(ints: &Vec<i32>) -> Vec<i64> {
+    pub fn ints_to_longs(ints: &[i32]) -> Vec<i64> {
         let longs: Vec<i64>;
         longs = ints.iter().map(|&x| x as i64).collect();
         longs
@@ -35,7 +34,7 @@ pub mod helpers {
 
     pub fn csv_string_to_ints(contents: &str) -> Vec<i32> {
         let mut ints = Vec::new();
-        for s in contents.split(",") {
+        for s in contents.split(',') {
             ints.push(s.trim().parse::<i32>().unwrap());
         }
         ints
