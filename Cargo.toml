@@ -32,6 +32,9 @@ path = "src/d5.rs"
 name = "d6"
 path = "src/d6.rs"
 
+[[bin]]
+name = "d7"
+path = "src/d7.rs"
 
 [[bin]]
 name = "play"
@@ -46,3 +49,4 @@ nom = "6"
 boolinator = "2.4.0"
 thiserror = "1.0"
 anyhow = "1.0"
+petgraph = "0.5"
