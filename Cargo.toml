@@ -44,6 +44,10 @@ path = "src/d8.rs"
 name = "play"
 path = "src/play_with_nom_errors.rs"
 
+[[bin]]
+name = "playground"
+path = "src/playground.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
