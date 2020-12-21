@@ -41,6 +41,11 @@ name = "d8"
 path = "src/d8.rs"
 
 [[bin]]
+name = "d9"
+path = "src/d9.rs"
+
+
+[[bin]]
 name = "play"
 path = "src/play_with_nom_errors.rs"
 
@@ -59,3 +64,4 @@ thiserror = "1.0"
 anyhow = "1.0"
 petgraph = "0.5"
 bytecount = "0.6.2"
+circular-queue = "0.2.6"
