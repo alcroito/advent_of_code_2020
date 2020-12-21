@@ -43,7 +43,7 @@ fn is_password_valid(args: &ValidityArgs) -> bool {
         high,
     } = *args;
 
-    let count = password.as_bytes().iter().filter(|&&c| c == needle).count() as i32;
+    let count = bytecount::count(password.as_bytes(), needle) as i32;
     count >= low && count <= high
 }
 

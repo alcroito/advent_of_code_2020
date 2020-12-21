@@ -6,6 +6,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "boolinator",
+ "bytecount",
  "itertools",
  "more-asserts",
  "nom",
@@ -54,6 +55,12 @@ name = "boolinator"
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfa8873f51c92e232f9bac4065cddef41b714152812bfc5f7672ba16d6ef8cd9"
+
+[[package]]
+name = "bytecount"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72feb31ffc86498dacdbd0fcebb56138e7177a8cc5cea4516031d15ae85a742e"
 
 [[package]]
 name = "cfg-if"
