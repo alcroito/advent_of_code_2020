@@ -37,18 +37,23 @@ fn get_two_numbers_product(nums: &Option<TwoNums>) -> Option<i64> {
     }
 }
 
-fn get_two_numbers_sum_and_product(target_sum: i64, numbers: &[i64]) -> (Option<TwoNums>, Option<i64>) {
+fn get_two_numbers_sum_and_product(
+    target_sum: i64,
+    numbers: &[i64],
+) -> (Option<TwoNums>, Option<i64>) {
     let nums = find_two_numbers_sum(target_sum, numbers);
     let result = get_two_numbers_product(&nums);
     (nums, result)
 }
 
 fn solve_p1() {
-    const TARGET_SUM:i64 = 2020;
+    const TARGET_SUM: i64 = 2020;
     let data = helpers::get_data_from_file("d1").unwrap();
     let numbers = helpers::lines_to_longs(&data);
 
-    if let (Some(TwoNums(n1, n2)), Some(result)) = get_two_numbers_sum_and_product(TARGET_SUM, &numbers) {
+    if let (Some(TwoNums(n1, n2)), Some(result)) =
+        get_two_numbers_sum_and_product(TARGET_SUM, &numbers)
+    {
         println!("The 2 numbers summed to {} are: {}, {}", TARGET_SUM, n1, n2);
         println!("The 2 numbers multipled are: {} ", result);
     } else {
@@ -92,12 +97,15 @@ fn get_three_numbers_product(nums: &Option<ThreeNums>) -> Option<i64> {
 }
 
 fn solve_p2() {
-    const TARGET_SUM:i64 = 2020;
+    const TARGET_SUM: i64 = 2020;
     let data = helpers::get_data_from_file("d1").unwrap();
     let numbers = helpers::lines_to_longs(&data);
 
     if let Some(ThreeNums(n1, n2, n3)) = find_three_numbers_sum(TARGET_SUM, &numbers) {
-        println!("The 3 numbers summed to {} are: {}, {}, {}", TARGET_SUM, n1, n2, n3);
+        println!(
+            "The 3 numbers summed to {} are: {}, {}, {}",
+            TARGET_SUM, n1, n2, n3
+        );
 
         let result = get_three_numbers_product(&Some(ThreeNums(n1, n2, n3))).unwrap();
         println!("The 3 numbers multipled are: {} ", result);
@@ -108,16 +116,28 @@ fn solve_p2() {
 
 #[test]
 fn test_p1() {
-    const TARGET_SUM:i64 = 2020;
-    assert_eq!(find_two_numbers_sum(TARGET_SUM, &[1721, 979, 366, 299, 675, 1456]), Some(TwoNums(1721, 299)));
-    assert_eq!(get_two_numbers_sum_and_product(TARGET_SUM, &[1721, 979, 366, 299, 675, 1456]).1, Some(514579));
-    assert_eq!(get_two_numbers_sum_and_product(TARGET_SUM, &[500, 1520]).1, Some(760000));
+    const TARGET_SUM: i64 = 2020;
+    assert_eq!(
+        find_two_numbers_sum(TARGET_SUM, &[1721, 979, 366, 299, 675, 1456]),
+        Some(TwoNums(1721, 299))
+    );
+    assert_eq!(
+        get_two_numbers_sum_and_product(TARGET_SUM, &[1721, 979, 366, 299, 675, 1456]).1,
+        Some(514579)
+    );
+    assert_eq!(
+        get_two_numbers_sum_and_product(TARGET_SUM, &[500, 1520]).1,
+        Some(760000)
+    );
 }
 
 #[test]
 fn test_p2() {
-    const TARGET_SUM:i64 = 2020;
-    assert_eq!(find_three_numbers_sum(TARGET_SUM, &[1721, 979, 366, 299, 675, 1456]), Some(ThreeNums(979, 366, 675)));
+    const TARGET_SUM: i64 = 2020;
+    assert_eq!(
+        find_three_numbers_sum(TARGET_SUM, &[1721, 979, 366, 299, 675, 1456]),
+        Some(ThreeNums(979, 366, 675))
+    );
 }
 
 fn main() {
