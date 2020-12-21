@@ -1,5 +1,5 @@
 use advent::helpers;
-use advent::helpers::nom::NomError;
+use advent::helpers::nom::NomError2;
 use anyhow::{Context, Result};
 use std::convert::TryFrom;
 
@@ -39,7 +39,7 @@ enum ReturnStatus {
 
 type EvalResult = (ReturnStatus, AccumulatorType);
 
-type NomErrorExact<'a> = NomError<&'a str>;
+type NomErrorExact<'a> = NomError2<&'a str>;
 
 fn parse_argument(i: &str) -> IResult<&str, i32, NomErrorExact> {
     map_res(
