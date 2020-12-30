@@ -48,6 +48,9 @@ path = "src/d9.rs"
 name = "d10"
 path = "src/d10.rs"
 
+[[bin]]
+name = "d11"
+path = "src/d11.rs"
 
 [[bin]]
 name = "play"
@@ -69,3 +72,4 @@ anyhow = "1.0"
 petgraph = "0.5"
 bytecount = "0.6.2"
 circular-queue = "0.2.6"
+derive_more = "0.99.0"
