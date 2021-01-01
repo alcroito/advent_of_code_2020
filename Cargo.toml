@@ -57,6 +57,10 @@ name = "d12"
 path = "src/d12.rs"
 
 [[bin]]
+name = "d13"
+path = "src/d13.rs"
+
+[[bin]]
 name = "play"
 path = "src/play_with_nom_errors.rs"
 
@@ -77,3 +81,4 @@ petgraph = "0.5"
 bytecount = "0.6.2"
 circular-queue = "0.2.6"
 derive_more = "0.99.0"
+num-integer = "0.1.44"
