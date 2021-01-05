@@ -61,6 +61,10 @@ name = "d13"
 path = "src/d13.rs"
 
 [[bin]]
+name = "d14"
+path = "src/d14.rs"
+
+[[bin]]
 name = "play"
 path = "src/play_with_nom_errors.rs"
 
@@ -72,7 +76,7 @@ path = "src/playground.rs"
 
 [dependencies]
 more-asserts = "0.2.1"
-itertools = "0.9"
+itertools = "0.10"
 nom = "6"
 boolinator = "2.4.0"
 thiserror = "1.0"
@@ -82,3 +86,5 @@ bytecount = "0.6.2"
 circular-queue = "0.2.6"
 derive_more = "0.99.0"
 num-integer = "0.1.44"
+regex = "1.4.2"
+lazy_static = "1.4.0"
