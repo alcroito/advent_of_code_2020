@@ -1,0 +1,23 @@
+range_divider = _{ "-" }
+range_pair_divider = _{ " or " }
+ticket_rule_colon = _{ ": " }
+
+your_ticket_label = _{ "your ticket:" }
+nearby_tickets_label = _{ "nearby tickets:" }
+
+rule_name_char = { ASCII_ALPHA_LOWER | " "}
+rule_name = { rule_name_char+ }
+range_start = { ASCII_DIGIT+ }
+range_end = { ASCII_DIGIT+ }
+range = { range_start ~ range_divider ~ range_end }
+range_pair = { range ~ range_pair_divider ~ range }
+ticket_rule = { rule_name ~ ticket_rule_colon ~ range_pair }
+
+ticket_value = { ASCII_DIGIT+ }
+ticket_values = { ticket_value ~ ("," ~ ticket_value)* }
+
+ticket_rules = { (ticket_rule ~ NEWLINE)+ ~ NEWLINE }
+your_ticket = { your_ticket_label ~ NEWLINE ~ ticket_values ~ NEWLINE{2} }
+nearby_tickets = { nearby_tickets_label ~ (NEWLINE ~ ticket_values)+ }
+
+document = ${ SOI ~ ticket_rules ~ your_ticket ~ nearby_tickets ~ EOI }

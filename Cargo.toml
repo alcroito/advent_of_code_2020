@@ -69,6 +69,10 @@ name = "d15"
 path = "src/d15.rs"
 
 [[bin]]
+name = "d16"
+path = "src/d16.rs"
+
+[[bin]]
 name = "play"
 path = "src/play_with_nom_errors.rs"
 
@@ -92,3 +96,5 @@ derive_more = "0.99.0"
 num-integer = "0.1.44"
 regex = "1.4.2"
 lazy_static = "1.4.0"
+pest = "2.1.3"
+pest_derive = "2.1.0"
