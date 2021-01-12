@@ -197,7 +197,7 @@ pub fn deduce_fields(s: &State) -> RuleToFieldMap {
     type FieldIdCandidatesForRules = Vec<FieldIdCandidates>;
     type UnmappedRules = std::collections::HashSet<usize>;
 
-    // Create lookup table for each rule, for fast validity checking.
+    // Create lookup table for each rule for fast validity checking.
     let rule_expanded_ranges = prepare_per_rule_valid_values_lookup_table(s);
 
     let rule_id_iter = 0..s.rules.len();
@@ -209,7 +209,7 @@ pub fn deduce_fields(s: &State) -> RuleToFieldMap {
     // All rules start as being unmapped.
     let mut unmapped_rules: UnmappedRules = rule_id_iter.collect();
 
-    // Once mapped to a field id, they are store here.
+    // Once mapped to a field id, they are stored here.
     let mut rule_to_field_map: RuleToFieldMap = vec![0; s.rules.len()];
 
     // While unmapped rules exist.
@@ -256,7 +256,7 @@ pub fn deduce_fields(s: &State) -> RuleToFieldMap {
     }
     // dbg!(&rule_to_field_map);
     // TODO: The current loop logic can be further optimized by precomputing the validity of
-    // all values for each field against each rule in one big matrix. In that case, the each
+    // all values for each field against each rule in one big matrix. In that case, each
     // loop iteration will only further reduce candidates by elimination, without having to
     // recompute the validity of each field / value / rule combo. It works fast enough
     // as-is though.
