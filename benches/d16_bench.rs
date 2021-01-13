@@ -14,8 +14,11 @@ nearby tickets:
 5,14,9";
     let mut s = advent::d16_lib::parse_document(input);
     advent::d16_lib::remove_invalid_tickets(&mut s);
-    c.bench_with_input(BenchmarkId::new("deduce_fields", 4), &s, |b, i| {
+    c.bench_with_input(BenchmarkId::new("deduce_fields", 1), &s, |b, i| {
         b.iter(|| advent::d16_lib::deduce_fields(i))
+    });
+    c.bench_with_input(BenchmarkId::new("deduce_fields_v2", 2), &s, |b, i| {
+        b.iter(|| advent::d16_lib::deduce_fields_v2(i))
     });
 }
 

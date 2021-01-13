@@ -255,11 +255,63 @@ pub fn deduce_fields(s: &State) -> RuleToFieldMap {
         // dbg!(&unmapped_rules);
     }
     // dbg!(&rule_to_field_map);
-    // TODO: The current loop logic can be further optimized by precomputing the validity of
+    // The current loop logic can be further optimized by precomputing the validity of
     // all values for each field against each rule in one big matrix. In that case, each
     // loop iteration will only further reduce candidates by elimination, without having to
     // recompute the validity of each field / value / rule combo. It works fast enough
     // as-is though.
+    // EDIT: The proposed optimization is implemented in deduce_fields_v2.
+    rule_to_field_map
+}
+
+pub fn deduce_fields_v2(s: &State) -> RuleToFieldMap {
+    let mut rule_to_field_map: RuleToFieldMap = vec![0; s.rules.len()];
+    let rule_expanded_ranges = prepare_per_rule_valid_values_lookup_table(s);
+
+    let rule_id_iter = 0..s.rules.len();
+    let field_id_iter = rule_id_iter.clone();
+
+    // Compute the validity matrix. Vec element indices are rule ids and the value
+    // is a set of valid field id candidates.
+    let matrix = rule_id_iter
+        .map(|rule_id| {
+            field_id_iter
+                .clone()
+                .filter(|&field_id| {
+                    s.nearby_tickets.iter().all(|ticket| {
+                        validate_ticket_field_using_rule(
+                            ticket,
+                            field_id,
+                            &rule_expanded_ranges,
+                            rule_id,
+                        )
+                    })
+                })
+                .collect::<std::collections::HashSet<usize>>()
+        })
+        .collect_vec();
+
+    // Compute the count of candidates per rule and sort them ascendingly.
+    // The candidate counts should be 1, 2, 3, ...
+    let mut per_rule_candidate_count = matrix
+        .iter()
+        .enumerate()
+        .map(|(rule_id, field_ids)| (field_ids.len(), rule_id))
+        .collect_vec();
+    per_rule_candidate_count.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+    // Go through each rule id and assign the only correct field id corresponding to the rule.
+    // That field id can not be used by other rules.
+    // Thus each iteration of the set difference should always yield one single candidate.
+    let mut used_field_ids = std::collections::HashSet::<usize>::new();
+    per_rule_candidate_count.iter().for_each(|(_, rule_id)| {
+        let mut candidates = matrix[*rule_id].difference(&used_field_ids);
+        let candidate = *candidates.next().unwrap();
+        debug_assert!(candidates.next().is_none());
+        rule_to_field_map[*rule_id] = candidate;
+        used_field_ids.insert(candidate);
+    });
+
     rule_to_field_map
 }
 
@@ -288,7 +340,7 @@ pub fn solve_p2() -> Result<()> {
     let mut s = parse_document(&input);
     remove_invalid_tickets(&mut s);
     deduce_fields(&s);
-    let rule_to_field_map = deduce_fields(&s);
+    let rule_to_field_map = deduce_fields_v2(&s);
     let result = multiply_departure_fields(&s, &rule_to_field_map);
     println!("The product of the six departure fields is: {}", result);
     Ok(())
@@ -333,7 +385,7 @@ nearby tickets:
 5,14,9";
         let mut s = parse_document(input);
         remove_invalid_tickets(&mut s);
-        let rule_to_field_map = deduce_fields(&s);
+        let rule_to_field_map = deduce_fields_v2(&s);
         let result = multiply_departure_fields(&s, &rule_to_field_map);
         assert_eq!(result, 1);
     }
