@@ -77,6 +77,10 @@ name = "d17"
 path = "src/d17.rs"
 
 [[bin]]
+name = "d18"
+path = "src/d18.rs"
+
+[[bin]]
 name = "play"
 path = "src/play_with_nom_errors.rs"
 
