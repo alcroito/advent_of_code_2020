@@ -35,7 +35,52 @@ fn call_closure(kind: &CallKind) {
     println!("s is {}", s.number);
 }
 
+fn nested_iterator_borrowing() {
+    let _a = (0..3)
+        .map(|y| (0..3).map(move |x| (x, y)))
+        .collect::<Vec<_>>();
+
+    // less efficient?
+    let xs = 0..2;
+    let ys = 0..2;
+    let zs = 0..2;
+    let _vertices = xs.flat_map(|x| {
+        let z_it = zs.clone();
+        ys.clone()
+            .flat_map(move |y| z_it.clone().map(move |z| (x, y, z)))
+    });
+
+    // more efficient?
+    let xs = 0..2;
+    let ys = 0..2;
+    let zs = 0..2;
+    let _vertices = xs.flat_map(|x| {
+        ys.clone().flat_map({
+            let z_it = &zs;
+            move |y| z_it.clone().map(move |z| (x, y, z))
+        })
+    });
+
+    // Efficient and no nested let rebinding?
+    let xs = 0..2;
+    let ys = 0..2;
+    let zs = 0..2;
+    let xs = &xs;
+    let ys = &ys;
+    let _xyzs = zs.flat_map(|z| {
+        ys.clone()
+            .flat_map(move |y| xs.clone().map(move |x| (x, y, z)))
+    });
+    dbg!(_xyzs.collect::<Vec<_>>());
+
+    let ys = 0..2;
+    let ys_ref = &ys;
+    let _ys_clone = ys.clone(); //         Same type \
+    let _ys_ref_clone = ys_ref.clone(); // Same type /
+}
+
 fn main() {
+    nested_iterator_borrowing();
     play();
     call_closure(&CallKind::CallF1);
     call_closure(&CallKind::CallF2);
