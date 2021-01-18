@@ -75,11 +75,15 @@ impl FromStr for Grid4D {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
+        let mut y_len = 0;
+        let mut x_len = 0;
         let g: Vec<(Point4D, Cube)> = s
             .lines()
             .enumerate()
             .flat_map(|(y, line)| {
+                y_len = y_len.max(y as isize);
                 line.chars().enumerate().map(move |(x, character)| {
+                    x_len = x_len.max(x as isize);
                     character
                         .to_string()
                         .parse::<Cube>()
@@ -93,14 +97,6 @@ impl FromStr for Grid4D {
             .map(|(p, _)| p)
             .collect();
 
-        // TODO: Is there a nice way to get the x and y lengths while iterating
-        // over the characters, without doing additiional passes?
-        let y_len = s.lines().count() as isize;
-        let x_len = s
-            .lines()
-            .next()
-            .map(|l| l.chars().count())
-            .ok_or_else(|| anyhow::anyhow!("line has no chars"))? as isize;
         Ok(Grid4D {
             grid: g,
             bounds: Bounds::new(0..=(x_len - 1), 0..=(y_len - 1), 0..=0, 0..=0),
