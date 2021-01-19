@@ -61,12 +61,32 @@ fn parse_rules_and_messages(s: &str) -> (Rules, Messages) {
     (rules, messages)
 }
 
+// A -> Ao | b
+// A -> Ao -> (Ao)o -> Aooo -> booo
+
+// 11 -> 42 31 | 42 11 31
+
+// 11 -> 2000 | 42 11 31
+// 2000 -> 42 31
+// 
+
 fn add_loop_to_rules(r: &mut Rules) {
     if let Some(v) = r.get_mut(&8) {
-        *v = Rule::Alternatives(vec![vec![42], vec![42, 8]])
+        *v = Rule::Alternatives(vec![vec![42], vec![1000]])
     };
+    r.insert(1000, Rule::Alternatives(vec![vec![42, 8]]));
+
+    // Expand '11 -> 42 31 | 42 11 31' rule into a limited number
+    // of non-looping alternatives up to a specific k.
+    // r.insert(2000, Rule::Alternatives(vec![vec![42, 31]]));
+    let mut r11_alternatives = vec![];
+    for i in 1..=4 {
+        let first = std::iter::repeat(42).take(i);
+        let second = std::iter::repeat(31).take(i);
+        r11_alternatives.push(first.chain(second).collect_vec());
+    }
     if let Some(v) = r.get_mut(&11) {
-        *v = Rule::Alternatives(vec![vec![42, 31], vec![42, 11, 31]])
+        *v = Rule::Alternatives(r11_alternatives)
     };
 }
 
@@ -143,7 +163,7 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
         rules_applied.pop();
         return (false, message_idx)
     }
-    // println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
+    println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
 
     let res = match rule {
         Rule::Char(c) => {
