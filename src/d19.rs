@@ -7,15 +7,14 @@ type RuleId = usize;
 type Subrule = Vec<usize>;
 type Message = String;
 type Messages = Vec<Message>;
+type SubruleAlternatives = Vec<Subrule>;
 
 #[derive(Debug, Display)]
 enum Rule {
     #[display(fmt = "{}", _0)]
     Char(char),
     #[display(fmt = "{:?}", _0)]
-    Unary(Subrule),
-    #[display(fmt = "{:?} | {:?}", _0, _1)]
-    BinaryAlt(Subrule, Subrule),
+    Alternatives(SubruleAlternatives),
 }
 type Rules = std::collections::HashMap<RuleId, Rule>;
 
@@ -44,13 +43,11 @@ fn parse_rules_and_messages(s: &str) -> (Rules, Messages) {
                         .map(|c| c.parse::<usize>().unwrap())
                         .collect_vec()
                 };
-                let subrule_1 = subrule_collector(subrule_1_str);
-                if let Some(s2) = subrules_it.next() {
-                    let subrule_2 = subrule_collector(s2);
-                    final_rule = Some(Rule::BinaryAlt(subrule_1, subrule_2));
-                } else {
-                    final_rule = Some(Rule::Unary(subrule_1));
+                let mut subrules = vec![subrule_collector(subrule_1_str)];
+                for subrule in subrules_it {
+                    subrules.push(subrule_collector(subrule));
                 }
+                final_rule = Some(Rule::Alternatives(subrules));
             }
             (rule_id, final_rule.unwrap())
         })
@@ -66,10 +63,10 @@ fn parse_rules_and_messages(s: &str) -> (Rules, Messages) {
 
 fn add_loop_to_rules(r: &mut Rules) {
     if let Some(v) = r.get_mut(&8) {
-        *v = Rule::BinaryAlt(vec![42], vec![42, 8])
+        *v = Rule::Alternatives(vec![vec![42], vec![42, 8]])
     };
     if let Some(v) = r.get_mut(&11) {
-        *v = Rule::BinaryAlt(vec![42, 31], vec![42, 11, 31])
+        *v = Rule::Alternatives(vec![vec![42, 31], vec![42, 11, 31]])
     };
 }
 
@@ -86,8 +83,7 @@ fn alt_count(r: &Rules, rule_idx: usize) -> usize {
     let rule = &r[&rule_idx];
     match rule {
         Rule::Char(..) => 1,
-        Rule::Unary(..) => 1,
-        Rule::BinaryAlt(..) => 2,
+        Rule::Alternatives(subrules) => subrules.len(),
     }
 }
 
@@ -98,7 +94,7 @@ fn check_if_matches_subrule(
     message_idx: usize,
     rules_applied: &mut Vec<usize>,
 ) -> (bool, usize) {
-    let subrule_cartesian_iter = subrule.iter().map(|rule_idx| 1..=alt_count(r, *rule_idx)).multi_cartesian_product();
+    let subrule_cartesian_iter = subrule.iter().map(|rule_idx| 0..alt_count(r, *rule_idx)).multi_cartesian_product();
 
     // let blob = subrule_cartesian_iter.clone().collect_vec();
     // let a = 4 + 4;
@@ -160,18 +156,9 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
             };
             (matches, return_idx)
         }
-        Rule::Unary(subrule) => check_if_matches_subrule(m, r, subrule, message_idx, rules_applied),
-        Rule::BinaryAlt(subrule_1, subrule_2) => {
-            match subrule_to_apply {
-                1 => {
-                    check_if_matches_subrule(m, r, subrule_1, message_idx, rules_applied)
-                },
-                2 => {
-                    check_if_matches_subrule(m, r, subrule_2, message_idx, rules_applied)
-                },
-                _ => unreachable!(),
-            }
-        }
+        Rule::Alternatives(subrules) => {
+            check_if_matches_subrule(m, r, &subrules[subrule_to_apply], message_idx, rules_applied)
+        },
     };
     if !res.0 {
         rules_applied.pop();
