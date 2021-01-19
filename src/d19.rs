@@ -1,5 +1,6 @@
 use advent::helpers;
 use anyhow::{Context, Result};
+use derive_more::Display;
 use itertools::Itertools;
 
 type RuleId = usize;
@@ -7,10 +8,13 @@ type Subrule = Vec<usize>;
 type Message = String;
 type Messages = Vec<Message>;
 
-#[derive(Debug)]
+#[derive(Debug, Display)]
 enum Rule {
+    #[display(fmt = "{}", _0)]
     Char(char),
+    #[display(fmt = "{:?}", _0)]
     Unary(Subrule),
+    #[display(fmt = "{:?} | {:?}", _0, _1)]
     BinaryAlt(Subrule, Subrule),
 }
 type Rules = std::collections::HashMap<RuleId, Rule>;
@@ -70,7 +74,8 @@ fn add_loop_to_rules(r: &mut Rules) {
 }
 
 fn is_message_valid_wrapper(m: &str, r: &Rules) -> bool {
-    let (matches, final_idx) = is_message_valid(m, r, 0, 0);
+    let mut rules_applied = Vec::<usize>::new();
+    let (matches, final_idx) = is_message_valid(m, r, 0, 0, &mut rules_applied);
     if !matches {
         return false;
     }
@@ -82,43 +87,68 @@ fn check_if_matches_subrule(
     r: &Rules,
     subrule: &[usize],
     message_idx: usize,
+    rules_applied: &mut Vec<usize>,
 ) -> (bool, usize) {
     let mut current_idx = message_idx;
+    let rules_applied_copy = rules_applied.clone();
     for new_rule_idx in subrule {
-        let (matches, returned_message_idx) = is_message_valid(m, r, current_idx, *new_rule_idx);
+        let (matches, returned_message_idx) = is_message_valid(m, r, current_idx, *new_rule_idx, rules_applied);
         if matches {
-            current_idx = returned_message_idx
+            current_idx = returned_message_idx;
         } else {
+            while rules_applied.len() != rules_applied_copy.len() {
+                rules_applied.pop();
+            }
             return (matches, message_idx);
         }
     }
     (true, current_idx)
 }
 
-fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize) -> (bool, usize) {
+fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, rules_applied: &mut Vec<usize>) -> (bool, usize) {
     let rule = &r[&rule_idx];
 
-    match rule {
+    // let rules_applied = format!("{},{}", rules_applied, rule_idx);
+    rules_applied.push(rule_idx);
+    println!("m_i: {:2} {:2}:{}, \n  applied: {:?} len {}", message_idx, rule_idx, rule, rules_applied, rules_applied.len());
+
+    if message_idx >= m.len() {
+        println!("m_i too long");
+        rules_applied.pop();
+        return (false, message_idx)
+    }
+    println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
+
+    let res = match rule {
         Rule::Char(c) => {
             let target_char = m.chars().nth(message_idx).unwrap();
             let matches = target_char == *c;
             let return_idx = if matches {
                 message_idx + 1
             } else {
+                // rules_applied.pop();
                 message_idx
             };
             (matches, return_idx)
         }
-        Rule::Unary(subrule) => check_if_matches_subrule(m, r, subrule, message_idx),
+        Rule::Unary(subrule) => check_if_matches_subrule(m, r, subrule, message_idx, rules_applied),
         Rule::BinaryAlt(subrule_1, subrule_2) => {
-            let unary_res = check_if_matches_subrule(m, r, subrule_1, message_idx);
+            let unary_res = check_if_matches_subrule(m, r, subrule_1, message_idx, rules_applied);
             if unary_res.0 {
                 unary_res
             } else {
-                check_if_matches_subrule(m, r, subrule_2, message_idx)
+                if subrule_2.contains(&rule_idx) {
+                    println!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>. looping {}", rule_idx);
+                }
+                check_if_matches_subrule(m, r, subrule_2, message_idx, rules_applied)
             }
         }
+    };
+    if !res.0 {
+        rules_applied.pop();
     }
+    println!("  res  :   {}", res.0);
+    res
 }
 
 fn count_valid_messages(s: &str) -> usize {
@@ -133,9 +163,14 @@ fn count_valid_messages(s: &str) -> usize {
 fn count_valid_messages_p2(s: &str) -> usize {
     let (mut rules, messages) = parse_rules_and_messages(s);
     add_loop_to_rules(&mut rules);
+    dbg!(&messages[0]);
     messages
         .iter()
-        .map(|m| is_message_valid_wrapper(m, &rules))
+        .map(|m| {
+            let v = is_message_valid_wrapper(m, &rules);
+            println!("m: {} valid: {}", m, v);
+            v
+        })
         .filter(|is_valid| *is_valid)
         .count()
 }
@@ -247,22 +282,23 @@ ab"#,
 7: 14 5 | 1 21
 24: 14 1
 
-abbbbbabbbaaaababbaabbbbabababbbabbbbbbabaaaa
-bbabbbbaabaabba
-babbbbaabbbbbabbbbbbaabaaabaaa
-aaabbbbbbaaaabaababaabababbabaaabbababababaaa
-bbbbbbbaaaabbbbaaabbabaaa
-bbbababbbbaaaaaaaabbababaaababaabab
-ababaaaaaabaaab
-ababaaaaabbbaba
-baabbaaaabbaaaababbaababb
-abbbbabbbbaaaababbbbbbaaaababb
-aaaaabbaabaaaaababaa
-aaaabbaaaabbaaa
-aaaabbaabbaaaaaaabbbabbbaaabbaabaaa
-babaaabbbaaabaababbaabababaaab
-aabbbbbaabbbaaaaaabbbbbababaaaaabbaaabba"#,
-            12
+babbbbaabbbbbabbbbbbaabaaabaaa"#,
+            1
         );
+
+// test!(
+//     r#"
+// 0: 8 11
+// 8: 42 | 42 8
+// 11: 42 31 | 42 11 31
+// 42: 1 | 14
+// 11: 1
+// 31: 1
+// 1: "a"
+// 14: "b"
+
+// bbbb"#,
+//     1
+// );
     }
 }
