@@ -2,9 +2,13 @@ use advent::helpers;
 use anyhow::{Context, Result};
 use derive_more::Display;
 use itertools::Itertools;
+// use nom::sequence;
+// use nom::branch::alt;
+// use nom::sequence::tuple;
 
 type RuleId = usize;
 type Subrule = Vec<usize>;
+type SubruleRef<'a> = &'a [usize];
 type Message = String;
 type Messages = Vec<Message>;
 type SubruleAlternatives = Vec<Subrule>;
@@ -76,18 +80,22 @@ fn add_loop_to_rules(r: &mut Rules) {
     };
     r.insert(1000, Rule::Alternatives(vec![vec![42, 8]]));
 
-    // Expand '11 -> 42 31 | 42 11 31' rule into a limited number
-    // of non-looping alternatives up to a specific k.
-    // r.insert(2000, Rule::Alternatives(vec![vec![42, 31]]));
-    let mut r11_alternatives = vec![];
-    for i in 1..=4 {
-        let first = std::iter::repeat(42).take(i);
-        let second = std::iter::repeat(31).take(i);
-        r11_alternatives.push(first.chain(second).collect_vec());
-    }
     if let Some(v) = r.get_mut(&11) {
-        *v = Rule::Alternatives(r11_alternatives)
+        *v = Rule::Alternatives(vec![vec![42, 31], vec![42, 11, 31]])
     };
+
+    // // Expand '11 -> 42 31 | 42 11 31' rule into a limited number
+    // // of non-looping alternatives up to a specific k.
+    // // r.insert(2000, Rule::Alternatives(vec![vec![42, 31]]));
+    // let mut r11_alternatives = vec![];
+    // for i in 1..=4 {
+    //     let first = std::iter::repeat(42).take(i);
+    //     let second = std::iter::repeat(31).take(i);
+    //     r11_alternatives.push(first.chain(second).collect_vec());
+    // }
+    // if let Some(v) = r.get_mut(&11) {
+    //     *v = Rule::Alternatives(r11_alternatives)
+    // };
 }
 
 fn is_message_valid_wrapper(m: &str, r: &Rules) -> bool {
@@ -187,6 +195,68 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
     res
 }
 
+// fn get_me<'a>() -> Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str> + 'a> {
+//     let p = nom::character::complete::char::<&str, nom::error::Error<&str>>('c');
+//     let p = nom::combinator::recognize(p);
+//     let boxed_p = Box::new(p);
+//     boxed_p
+// }
+
+// type InputType<'a> = &'a str;
+// type NomError<'a> = nom::error::Error<InputType<'a>>;
+// type BoxedParser<'a> = Box<dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>>>;
+
+fn build_nom_subrole_parser<'a>(r: &Rules, s: SubruleRef) -> Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str> + 'a> {
+    let mut subrule_it = s.iter();
+    let first_rule_idx = subrule_it.next().unwrap();
+
+    // let first_p = nom::character::complete::char::<&str, nom::error::Error<&str>>('c');
+    // let first_p = nom::combinator::recognize(first_p);
+    // let mut boxed_first_p: Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str>> = Box::new(first_p);
+
+    let mut boxed_first_p = build_nom_parser(r, *first_rule_idx, 0);
+
+    for new_rule_idx in subrule_it {
+        // let new_p = nom::character::complete::char::<&str, nom::error::Error<&str>>('c');
+        // let new_p = nom::combinator::recognize(new_p);
+        let new_p = build_nom_parser(r, *new_rule_idx, 0);
+        let new_p_leaked = Box::leak(new_p);
+        let leaked_first_p = Box::leak(boxed_first_p);
+        let sequenced = nom::sequence::pair(leaked_first_p, new_p_leaked);
+        boxed_first_p = Box::new(nom::combinator::recognize(sequenced));
+    }
+    boxed_first_p
+}
+
+fn build_nom_parser<'a>(r: &Rules, rule_idx: usize, _subrule_to_apply: usize) -> Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str> + 'a> {
+    let rule = &r[&rule_idx];
+    
+    let res = match rule {
+        Rule::Char(c) => {
+            let p = nom::character::complete::char::<&str, nom::error::Error<&str>>(*c);
+            let p = nom::combinator::recognize(p);
+            let boxed_p: Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str>> = Box::new(p);
+            boxed_p
+        }
+        // _ => unreachable!(),
+        Rule::Alternatives(alternatives) => {
+            let mut alternatives_it = alternatives.iter();
+            let alternative = alternatives_it.next().unwrap();
+            let mut first_alternative_boxed_p = build_nom_subrole_parser(r, alternative);
+
+            for new_alternative in alternatives_it {
+                let new_alternative_boxed_p = build_nom_subrole_parser(r, new_alternative);
+                let new_alternative_leaked_p = Box::leak(new_alternative_boxed_p);
+                let first_alternative_leaked_p = Box::leak(first_alternative_boxed_p);
+                let alted = nom::branch::alt((first_alternative_leaked_p, new_alternative_leaked_p));
+                first_alternative_boxed_p = Box::new(alted);
+            }
+            first_alternative_boxed_p
+        },
+    };
+    res
+}
+
 fn count_valid_messages(s: &str) -> usize {
     let (rules, messages) = parse_rules_and_messages(s);
     messages
@@ -199,6 +269,8 @@ fn count_valid_messages(s: &str) -> usize {
 fn count_valid_messages_p2(s: &str) -> usize {
     let (mut rules, messages) = parse_rules_and_messages(s);
     add_loop_to_rules(&mut rules);
+
+    let nom_p = build_nom_parser(&rules, 0, 0);
     dbg!(&messages[0]);
     messages
         .iter()
