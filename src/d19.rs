@@ -75,11 +75,20 @@ fn add_loop_to_rules(r: &mut Rules) {
 
 fn is_message_valid_wrapper(m: &str, r: &Rules) -> bool {
     let mut rules_applied = Vec::<usize>::new();
-    let (matches, final_idx) = is_message_valid(m, r, 0, 0, &mut rules_applied);
+    let (matches, final_idx) = is_message_valid(m, r, 0, 0, 0, &mut rules_applied);
     if !matches {
         return false;
     }
     final_idx == m.len()
+}
+
+fn alt_count(r: &Rules, rule_idx: usize) -> usize {
+    let rule = &r[&rule_idx];
+    match rule {
+        Rule::Char(..) => 1,
+        Rule::Unary(..) => 1,
+        Rule::BinaryAlt(..) => 2,
+    }
 }
 
 fn check_if_matches_subrule(
@@ -89,35 +98,56 @@ fn check_if_matches_subrule(
     message_idx: usize,
     rules_applied: &mut Vec<usize>,
 ) -> (bool, usize) {
-    let mut current_idx = message_idx;
-    let rules_applied_copy = rules_applied.clone();
-    for new_rule_idx in subrule {
-        let (matches, returned_message_idx) = is_message_valid(m, r, current_idx, *new_rule_idx, rules_applied);
-        if matches {
-            current_idx = returned_message_idx;
-        } else {
-            while rules_applied.len() != rules_applied_copy.len() {
-                rules_applied.pop();
+    let subrule_cartesian_iter = subrule.iter().map(|rule_idx| 1..=alt_count(r, *rule_idx)).multi_cartesian_product();
+
+    // let blob = subrule_cartesian_iter.clone().collect_vec();
+    // let a = 4 + 4;
+    
+    for candidate_subrule_indices in subrule_cartesian_iter {
+        let mut current_idx = message_idx;
+        let rules_applied_copy = rules_applied.clone();
+        let mut valid_cartesian_choice = true;
+
+        for (new_rule_pos, new_rule_idx) in subrule.iter().enumerate() {
+            let subrule_to_apply = candidate_subrule_indices[new_rule_pos];
+            if new_rule_idx == &8 {
+                // println!("looping 8");
             }
-            return (matches, message_idx);
+            if new_rule_idx == &11 {
+                // println!("looping 11");
+            }
+            let (matches, returned_message_idx) = is_message_valid(m, r, current_idx, *new_rule_idx, subrule_to_apply, rules_applied);
+            if matches {
+                current_idx = returned_message_idx;
+            } else {
+                while rules_applied.len() != rules_applied_copy.len() {
+                    rules_applied.pop();
+                }
+                valid_cartesian_choice = false;
+                break;
+            }
+        }
+
+        if valid_cartesian_choice {
+            return (true, current_idx)
         }
     }
-    (true, current_idx)
+    (false, message_idx)
 }
 
-fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, rules_applied: &mut Vec<usize>) -> (bool, usize) {
+fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, subrule_to_apply: usize, rules_applied: &mut Vec<usize>) -> (bool, usize) {
     let rule = &r[&rule_idx];
 
     // let rules_applied = format!("{},{}", rules_applied, rule_idx);
     rules_applied.push(rule_idx);
-    println!("m_i: {:2} {:2}:{}, \n  applied: {:?} len {}", message_idx, rule_idx, rule, rules_applied, rules_applied.len());
+    // println!("m_i: {:2} {:2}:{}, \n  applied: {:?} len {}", message_idx, rule_idx, rule, rules_applied, rules_applied.len());
 
     if message_idx >= m.len() {
-        println!("m_i too long");
+        // println!("m_i too long");
         rules_applied.pop();
         return (false, message_idx)
     }
-    println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
+    // println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
 
     let res = match rule {
         Rule::Char(c) => {
@@ -126,28 +156,27 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, rul
             let return_idx = if matches {
                 message_idx + 1
             } else {
-                // rules_applied.pop();
                 message_idx
             };
             (matches, return_idx)
         }
         Rule::Unary(subrule) => check_if_matches_subrule(m, r, subrule, message_idx, rules_applied),
         Rule::BinaryAlt(subrule_1, subrule_2) => {
-            let unary_res = check_if_matches_subrule(m, r, subrule_1, message_idx, rules_applied);
-            if unary_res.0 {
-                unary_res
-            } else {
-                if subrule_2.contains(&rule_idx) {
-                    println!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>. looping {}", rule_idx);
-                }
-                check_if_matches_subrule(m, r, subrule_2, message_idx, rules_applied)
+            match subrule_to_apply {
+                1 => {
+                    check_if_matches_subrule(m, r, subrule_1, message_idx, rules_applied)
+                },
+                2 => {
+                    check_if_matches_subrule(m, r, subrule_2, message_idx, rules_applied)
+                },
+                _ => unreachable!(),
             }
         }
     };
     if !res.0 {
         rules_applied.pop();
     }
-    println!("  res  :   {}", res.0);
+    // println!("  res  :   {}", res.0);
     res
 }
 
@@ -282,7 +311,7 @@ ab"#,
 7: 14 5 | 1 21
 24: 14 1
 
-babbbbaabbbbbabbbbbbaabaaabaaa"#,
+abbbbabbbbaaaababbbbbbaaaababb"#,
             1
         );
 

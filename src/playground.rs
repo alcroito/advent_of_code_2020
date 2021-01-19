@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 fn play() {
     let a = (1..=4)
         .into_iter()
@@ -80,6 +82,14 @@ fn nested_iterator_borrowing() {
 }
 
 fn main() {
+
+    // (0..3)
+    // .map(|i| (i * 2)..(i * 2 + 2))
+    // .multi_cartesian_product().for_each(|o| println!("{:?}", o));
+    vec![(1..=2), (1..=1), (1..=1)]
+    .into_iter()
+    .multi_cartesian_product().for_each(|o| println!("{:?}", o));
+
     nested_iterator_borrowing();
     play();
     call_closure(&CallKind::CallF1);
