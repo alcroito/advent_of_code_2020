@@ -81,8 +81,49 @@ fn nested_iterator_borrowing() {
     let _ys_ref_clone = ys_ref.clone(); // Same type /
 }
 
-fn main() {
+fn pass_mutable_dyn_closure() {
+    let mut state = 0;
+    {   
+        let closure = || {
+            state += 1;
+            state
+        };
+        let mut boxed_closure: Box<dyn FnMut() -> usize> = Box::new(closure);
+        let unboxed_closure = boxed_closure.as_mut();
+        call_my_fn(unboxed_closure);
+    }
+    println!("final value is: {}", state);
 
+    println!("val is: {}", state);
+    let closure = || {
+        state += 1;
+        state
+    };
+    
+    {
+        let mut boxed_closure: Box<dyn FnMut() -> usize> = Box::new(closure);
+        println!("reference address is: {:p}", boxed_closure.as_ref());
+        let pointer = boxed_closure.as_mut();
+        let pointer = pointer as *mut dyn FnMut() -> usize;
+        println!("pointer   address is: {:p}", pointer);
+        unsafe {
+            let pointer = &mut *pointer;
+            pointer();
+            pointer();
+            pointer();
+        }
+
+    }
+    println!("val is: {}", state);
+}
+
+fn call_my_fn<F>(mut f: F) 
+where F: FnMut() -> usize
+{
+    f();
+}
+
+fn main() {
     // (0..3)
     // .map(|i| (i * 2)..(i * 2 + 2))
     // .multi_cartesian_product().for_each(|o| println!("{:?}", o));
@@ -90,6 +131,7 @@ fn main() {
     .into_iter()
     .multi_cartesian_product().for_each(|o| println!("{:?}", o));
 
+    pass_mutable_dyn_closure();
     nested_iterator_borrowing();
     play();
     call_closure(&CallKind::CallF1);

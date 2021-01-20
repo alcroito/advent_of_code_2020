@@ -2,6 +2,8 @@ use advent::helpers;
 use anyhow::{Context, Result};
 use derive_more::Display;
 use itertools::Itertools;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 type RuleId = usize;
 type Subrule = Vec<usize>;
@@ -12,7 +14,9 @@ type SubruleAlternatives = Vec<Subrule>;
 
 type InputType<'a> = &'a str;
 // type NomError<'a> = nom::error::Error<InputType<'a>>;
-type BoxedParser<'a> = Box<dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'a>;
+type DynParser<'a> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'a;
+type BoxedParser<'a> = Box<DynParser<'a>>;
+// type RcParser<'a> = std::rc::Rc<std::cell::RefCell<DynParser<'a>>>;
 type NomParserMap<'a> = std::collections::HashMap<RuleId, BoxedParser<'a>>;
 
 #[derive(Debug, Display)]
@@ -191,23 +195,23 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
 fn build_nom_subrole_parser<'a>(r: &Rules, s: SubruleRef, nom_map: &mut NomParserMap) -> BoxedParser<'a> {
     let mut subrule_it = s.iter();
     let first_rule_idx = subrule_it.next().unwrap();
-    let mut boxed_first_p = build_regular_nom_parser(r, *first_rule_idx, nom_map);
+    let mut first_p_boxed = build_regular_nom_parser(r, *first_rule_idx, nom_map);
 
     for new_rule_idx in subrule_it {
-        let new_p = build_regular_nom_parser(r, *new_rule_idx, nom_map);
-        let new_p_leaked = Box::leak(new_p);
-        let leaked_first_p = Box::leak(boxed_first_p);
-        let sequenced = nom::sequence::pair(leaked_first_p, new_p_leaked);
-        boxed_first_p = Box::new(nom::combinator::recognize(sequenced));
+        let new_p_boxed = build_regular_nom_parser(r, *new_rule_idx, nom_map);
+        // let new_p_leaked = Box::leak(new_p_boxed);
+        // let first_p_leaked = Box::leak(first_p_boxed);
+        let sequenced = nom::sequence::pair(first_p_boxed, new_p_boxed);
+        first_p_boxed = Box::new(nom::combinator::recognize(sequenced));
     }
-    boxed_first_p
+    first_p_boxed
 }
 
 fn build_nom_alternative_parser<'a>(r: &Rules, new_alternative: SubruleRef, first_alternative_boxed_p: BoxedParser<'a>, nom_map: &mut NomParserMap) -> BoxedParser<'a> {
     let new_alternative_boxed_p = build_nom_subrole_parser(r, new_alternative, nom_map);
-    let new_alternative_leaked_p = Box::leak(new_alternative_boxed_p);
-    let first_alternative_leaked_p = Box::leak(first_alternative_boxed_p);
-    let alted = nom::branch::alt((first_alternative_leaked_p, new_alternative_leaked_p));
+    // let new_alternative_leaked_p = Box::leak(new_alternative_boxed_p);
+    // let first_alternative_leaked_p = Box::leak(first_alternative_boxed_p);
+    let alted = nom::branch::alt((first_alternative_boxed_p, new_alternative_boxed_p));
     Box::new(alted)
 }
 
@@ -266,6 +270,25 @@ fn build_regular_nom_parser<'a>(r: &Rules, rule_idx: usize, nom_map: &mut NomPar
     };
     res
 }
+
+// fn bla<'a>() -> impl FnMut(&'a str) -> nom::IResult<&'a str, &'a str> +'a {
+//     let p = nom::character::complete::char::<&str, nom::error::Error<&str>>('a');
+//     let p1 = nom::combinator::recognize(p);
+
+//     let p = nom::character::complete::char::<&str, nom::error::Error<&str>>('b');
+//     let p2 = nom::combinator::recognize(p);
+
+//     let p1: RcParser = Rc::new(RefCell::new(p1));
+//     let p2: RcParser = Rc::new(RefCell::new(p2));
+
+//     let mut a = p1.borrow_mut();
+//     let b = &mut *a;
+
+//     let mut c = p2.borrow_mut();
+//     let d = &mut *c;
+//     let pc = nom::combinator::recognize(nom::sequence::pair(b, d));
+//     pc
+// }
 
 fn is_message_valid_using_nom(m: &str, r: &Rules, nom_map: &mut NomParserMap) -> bool {
     let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
@@ -334,7 +357,7 @@ fn solve_p2() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    solve_p1().ok();
+    // solve_p1().ok();
     solve_p2().ok();
     Ok(())
 }
