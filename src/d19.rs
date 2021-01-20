@@ -2,9 +2,6 @@ use advent::helpers;
 use anyhow::{Context, Result};
 use derive_more::Display;
 use itertools::Itertools;
-// use nom::sequence;
-// use nom::branch::alt;
-// use nom::sequence::tuple;
 
 type RuleId = usize;
 type Subrule = Vec<usize>;
@@ -171,7 +168,7 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
         rules_applied.pop();
         return (false, message_idx)
     }
-    println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
+    // println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
 
     let res = match rule {
         Rule::Char(c) => {
@@ -228,8 +225,46 @@ fn build_nom_subrole_parser<'a>(r: &Rules, s: SubruleRef) -> Box<dyn FnMut(&'a s
     boxed_first_p
 }
 
-fn build_nom_parser<'a>(r: &Rules, rule_idx: usize, _subrule_to_apply: usize) -> Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str> + 'a> {
+fn build_nom_alternative_parser<'a>(r: &Rules, new_alternative: SubruleRef, first_alternative_boxed_p: Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str> + 'a>) -> Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str> + 'a> {
+    let new_alternative_boxed_p = build_nom_subrole_parser(r, new_alternative);
+    let new_alternative_leaked_p = Box::leak(new_alternative_boxed_p);
+    let first_alternative_leaked_p = Box::leak(first_alternative_boxed_p);
+    let alted = nom::branch::alt((first_alternative_leaked_p, new_alternative_leaked_p));
+    Box::new(alted)
+}
+
+fn build_nom_parser<'a>(r: &Rules, rule_idx: usize, repeat_count: usize) -> Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str> + 'a> {
     let rule = &r[&rule_idx];
+
+    if rule_idx == 8 {
+        // Special case looping parser 8.
+        let p = build_nom_parser(r, 42, 0);
+        let p = nom::combinator::recognize(p);
+        let p = nom::multi::count(p, repeat_count);
+        let p = nom::combinator::recognize(p);
+        let boxed_p: Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str>> = Box::new(p);
+        return boxed_p;
+    }
+
+    if rule_idx == 11 {
+        // Special case looping parser 11.
+        let p_42 = build_nom_parser(r, 42, 0);
+        let p_42 = nom::combinator::recognize(p_42);
+        let p_31 = build_nom_parser(r, 31, 0);
+        let p_31 = nom::combinator::recognize(p_31);
+
+        let p_42 = nom::multi::count(p_42, repeat_count);
+        let p_42 = nom::combinator::recognize(p_42);
+
+        let p_31 = nom::multi::count(p_31, repeat_count);
+        let p_31 = nom::combinator::recognize(p_31);
+
+        let p = nom::sequence::pair(p_42, p_31);
+        let p = nom::combinator::recognize(p);
+
+        let boxed_p: Box<dyn FnMut(&'a str) -> nom::IResult<&'a str, &'a str>> = Box::new(p);
+        return boxed_p;
+    }
     
     let res = match rule {
         Rule::Char(c) => {
@@ -245,16 +280,35 @@ fn build_nom_parser<'a>(r: &Rules, rule_idx: usize, _subrule_to_apply: usize) ->
             let mut first_alternative_boxed_p = build_nom_subrole_parser(r, alternative);
 
             for new_alternative in alternatives_it {
-                let new_alternative_boxed_p = build_nom_subrole_parser(r, new_alternative);
-                let new_alternative_leaked_p = Box::leak(new_alternative_boxed_p);
-                let first_alternative_leaked_p = Box::leak(first_alternative_boxed_p);
-                let alted = nom::branch::alt((first_alternative_leaked_p, new_alternative_leaked_p));
-                first_alternative_boxed_p = Box::new(alted);
+                first_alternative_boxed_p = build_nom_alternative_parser(r, new_alternative, first_alternative_boxed_p);
             }
             first_alternative_boxed_p
         },
     };
     res
+}
+
+fn is_message_valid_using_nom(m: &str, r: &Rules) -> bool {
+    let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
+
+    for repeat_counts in repeat_cartesian_iter {
+        let mut nom_p_8 = build_nom_parser(&r, 8, repeat_counts[0]);
+        let mut nom_p_11 = build_nom_parser(&r,11, repeat_counts[1]);
+        let res = nom_p_8.as_mut()(m);
+        let res = res.and_then(|(input, _output)|{
+            // dbg!((&input, &_output));
+            nom_p_11.as_mut()(input)
+        });
+        // dbg!(&res);
+        let res = res.map(|(input, _)| input.is_empty()).unwrap_or(false);
+        // println!("is valid: {}", res);
+        if res {
+            return res
+        }
+    
+    }
+
+    false
 }
 
 fn count_valid_messages(s: &str) -> usize {
@@ -269,14 +323,13 @@ fn count_valid_messages(s: &str) -> usize {
 fn count_valid_messages_p2(s: &str) -> usize {
     let (mut rules, messages) = parse_rules_and_messages(s);
     add_loop_to_rules(&mut rules);
-
-    let nom_p = build_nom_parser(&rules, 0, 0);
+    
     dbg!(&messages[0]);
     messages
         .iter()
         .map(|m| {
-            let v = is_message_valid_wrapper(m, &rules);
-            println!("m: {} valid: {}", m, v);
+            let v = is_message_valid_using_nom(m, &rules);
+            // println!("m: {} valid: {}", m, v);
             v
         })
         .filter(|is_valid| *is_valid)
@@ -390,9 +443,13 @@ ab"#,
 7: 14 5 | 1 21
 24: 14 1
 
-abbbbabbbbaaaababbbbbbaaaababb"#,
+bbabbbbaabaabba
+"#,
             1
         );
+
+// bbabbbbaabaabba
+// abbbbabbbbaaaababbbbbbaaaababb
 
 // test!(
 //     r#"
@@ -406,6 +463,19 @@ abbbbabbbbaaaababbbbbbaaaababb"#,
 // 14: "b"
 
 // bbbb"#,
+//     1
+// );
+
+// test!(
+//     r#"
+// 8: 42 | 42 8
+// 42: 1 | 14
+// 11: 1
+// 31: 1
+// 1: "a"
+// 14: "b"
+
+// baa"#,
 //     1
 // );
     }
