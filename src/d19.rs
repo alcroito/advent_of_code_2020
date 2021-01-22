@@ -12,11 +12,11 @@ type SubruleAlternatives = Vec<Subrule>;
 
 type InputType<'a> = &'a str;
 // type NomError<'a> = nom::error::Error<InputType<'a>>;
-type DynParser<'a> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'a;
-type BoxedParser<'a> = Box<DynParser<'a>>;
-type DynParserPointer<'a> = *mut DynParser<'a>;
+type DynParser<'a, 'p> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'p;
+type BoxedParser<'a, 'p> = Box<DynParser<'a, 'p>>;
+type DynParserPointer<'a, 'p> = *mut DynParser<'a, 'p>;
 // type RcParser<'a> = std::rc::Rc<std::cell::RefCell<DynParser<'a>>>;
-type NomParserMap<'a> = std::collections::HashMap<RuleId, BoxedParser<'a>>;
+type NomParserMap<'a, 'p> = std::collections::HashMap<RuleId, BoxedParser<'a, 'p>>;
 
 #[derive(Debug, Display)]
 enum Rule {
@@ -191,7 +191,7 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
     res
 }
 
-fn build_nom_subrole_parser<'a, 'p>(r: &Rules, s: SubruleRef, nom_map: &mut NomParserMap) -> &'p mut DynParser<'a> {
+fn build_nom_subrole_parser<'a, 'p>(r: &Rules, s: SubruleRef, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
     let mut subrule_it = s.iter();
     let first_rule_idx = subrule_it.next().unwrap();
     let mut first_p_boxed = build_regular_nom_parser(r, *first_rule_idx, nom_map);
@@ -201,20 +201,22 @@ fn build_nom_subrole_parser<'a, 'p>(r: &Rules, s: SubruleRef, nom_map: &mut NomP
         // let new_p_leaked = Box::leak(new_p_boxed);
         // let first_p_leaked = Box::leak(first_p_boxed);
         let sequenced = nom::sequence::pair(first_p_boxed, new_p_boxed);
-        first_p_boxed = nom::combinator::recognize(sequenced);
+        first_p_boxed = &mut nom::combinator::recognize(sequenced);
     }
-    first_p_boxed
+    let boxed: BoxedParser<'a, 'p> = Box::new(first_p_boxed);
+    boxed
 }
 
-fn build_nom_alternative_parser<'a, 'p>(r: &Rules, new_alternative: SubruleRef, first_alternative_boxed_p: BoxedParser<'a>, nom_map: &mut NomParserMap) -> &'p mut DynParser<'a> {
+fn build_nom_alternative_parser<'a, 'p>(r: &Rules, new_alternative: SubruleRef, first_alternative_boxed_p: BoxedParser<'a, 'p>, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
     let new_alternative_boxed_p = build_nom_subrole_parser(r, new_alternative, nom_map);
     // let new_alternative_leaked_p = Box::leak(new_alternative_boxed_p);
     // let first_alternative_leaked_p = Box::leak(first_alternative_boxed_p);
     let alted = nom::branch::alt((first_alternative_boxed_p, new_alternative_boxed_p));
-    alted
+    let boxed: BoxedParser<'a, 'p> = Box::new(alted);
+    boxed
 }
 
-fn build_nom_parser_8<'a>(r: &Rules, repeat_count: usize, nom_map: &mut NomParserMap) -> BoxedParser<'a> {
+fn build_nom_parser_8<'a, 'p>(r: &Rules, repeat_count: usize, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
     // Special case looping parser 8.
     let p = build_regular_nom_parser(r, 42, nom_map);
     let p = nom::combinator::recognize(p);
@@ -223,7 +225,7 @@ fn build_nom_parser_8<'a>(r: &Rules, repeat_count: usize, nom_map: &mut NomParse
     Box::new(p)
 }
 
-fn build_nom_parser_11<'a>(r: &Rules, repeat_count: usize, nom_map: &mut NomParserMap) -> BoxedParser<'a> {
+fn build_nom_parser_11<'a, 'p>(r: &Rules, repeat_count: usize, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
     // Special case looping parser 11.
     let p_42 = build_regular_nom_parser(r, 42, nom_map);
     let p_42 = nom::combinator::recognize(p_42);
@@ -242,7 +244,7 @@ fn build_nom_parser_11<'a>(r: &Rules, repeat_count: usize, nom_map: &mut NomPars
     Box::new(p)
 }
 
-fn build_regular_nom_parser<'a, 'p>(r: &Rules, rule_idx: usize, nom_map: &mut NomParserMap) -> &'p mut DynParser<'a> {
+fn build_regular_nom_parser<'a, 'p>(r: &Rules, rule_idx: usize, nom_map: &'p mut NomParserMap) -> &'p mut DynParser<'a, 'p> {
     if let Some(boxed_p) = nom_map.get(&rule_idx) {
         let p_raw = boxed_p.as_mut() as *mut DynParser;
         unsafe {
@@ -269,7 +271,12 @@ fn build_regular_nom_parser<'a, 'p>(r: &Rules, rule_idx: usize, nom_map: &mut No
             first_alternative_boxed_p
         },
     };
-    res
+
+    let res_raw = res.as_mut() as *mut DynParser;
+    unsafe {
+        let res_ref = &mut *res_raw;
+        res_ref
+    }
 }
 
 // fn bla<'a>() -> impl FnMut(&'a str) -> nom::IResult<&'a str, &'a str> +'a {
