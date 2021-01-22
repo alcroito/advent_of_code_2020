@@ -169,18 +169,18 @@ enum Val<'a> {
 }
 type BoxedVal<'a> = Box<Val<'a>>;
 type Rules = std::collections::HashMap<Id, RuleKind>;
-type FuncMap<'a> = std::collections::HashMap<Id, &'a Val<'a>>;
+type FuncMap<'a> = std::collections::HashMap<Id, BoxedVal<'a>>;
 
 fn alloc_nodes<'a>(r: &Rules, rule_id: usize, 
-                       arena: &'a typed_arena::Arena<Val<'a>>, memo: &'a RefCell<std::collections::HashMap<Id, &'a Val<'a>>>) {
+                   memo: &'a RefCell<std::collections::HashMap<Id, Box<Val<'a>>>>) {
     if memo.borrow().contains_key(&rule_id) {
         return;
     }
     let rule = &r[&rule_id];
     match rule {
         RuleKind::Leaf(leaf_value) => {
-            let new_b = arena.alloc(Val::Leaf(*leaf_value));
-            // let new_b = Box::new(Val::Leaf(*leaf_value));
+            // let new_b = arena.alloc(Val::Leaf(*leaf_value));
+            let new_b = Box::new(Val::Leaf(*leaf_value));
             memo.borrow_mut().insert(rule_id, new_b);
         },
         RuleKind::ChildIds(..) => {
@@ -191,8 +191,8 @@ fn alloc_nodes<'a>(r: &Rules, rule_id: usize,
             //     child_vec.push(child_b);
             // }
             let val = Val::Add(RefCell::new(None));
-            let new_b = arena.alloc(val);
-            // let new_b = Box::new(val);
+            // let new_b = arena.alloc(val);
+            let new_b = Box::new(val);
             memo.borrow_mut().insert(rule_id, new_b);
         },
     }
@@ -222,20 +222,21 @@ fn alloc_nodes<'a>(r: &Rules, rule_id: usize,
     // };
 }
 
-fn init_nodes<'a>(r: &Rules, rule_id: usize, memo: &'a RefCell<std::collections::HashMap<Id, &'a Val<'a>>>) {
+fn init_nodes<'a>(r: &Rules, rule_id: usize, memo: &'a RefCell<std::collections::HashMap<Id, Box<Val<'a>>>>) {
     let rule = &r[&rule_id];
     match rule {
         RuleKind::Leaf(..) => (),
         RuleKind::ChildIds(child_ids) => {
             let memo_b = memo.borrow();
-            let branch = *memo_b.get(&rule_id).unwrap();
+            let branch = memo_b.get(&rule_id).unwrap().as_ref();
             match branch {
                 Val::Add(cell) => {
                     let mut borrowed_cell = cell.borrow_mut();
                     if borrowed_cell.is_none() {
                         let mut child_vec = vec![];
                         for child_id in child_ids {
-                            let child_b = *memo_b.get(child_id).unwrap();
+                            let child_b1 = memo_b.get(child_id).unwrap();
+                            let child_b = child_b1.as_ref();
                             child_vec.push(child_b);
                         }
                         *borrowed_cell = Some(child_vec);
@@ -268,12 +269,12 @@ fn init_boxed_vals() {
     r.insert(1, RuleKind::ChildIds(vec![2, 2]));
     r.insert(2, RuleKind::Leaf(5));
 
-    let arena = typed_arena::Arena::new();
+    // let arena = typed_arena::Arena::new();
     let memo = RefCell::new(FuncMap::new());
     let mut post_order_vec:Vec<usize> = vec![];
     init_post_order_vec(&r, 0, &mut post_order_vec);
     for rule_id in post_order_vec {
-        alloc_nodes(&r, rule_id, &arena, &memo);
+        alloc_nodes(&r, rule_id, &memo);
         init_nodes(&r, rule_id, &memo);
     }
     dbg!(&memo);
