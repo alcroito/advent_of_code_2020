@@ -167,12 +167,13 @@ enum Val<'a> {
     Leaf(i32),
     Add(Vec<&'a Val<'a>>)
 }
-type BoxedVal<'a> = Box<Val<'a>>;
-type Rules = std::collections::HashMap<Id, RuleKind>;
-type FuncMap<'a> = std::collections::HashMap<Id, &'a Val<'a>>;
 
-fn alloc_nodes<'a>(r: &Rules, rule_id: usize, 
-                       arena: &'a typed_arena::Arena<Val<'a>>, memo: &'a RefCell<std::collections::HashMap<Id, &'a Val<'a>>>) {
+type Rules = std::collections::HashMap<Id, RuleKind>;
+type RuleNodeMap<'a> = std::collections::HashMap<Id, &'a Val<'a>>;
+
+fn build_rule_tree_recursive<'a>(r: &Rules, rule_id: usize, 
+                                 arena: &'a typed_arena::Arena<Val<'a>>, 
+                                 memo: &RefCell<RuleNodeMap<'a>>) {
     if memo.borrow().contains_key(&rule_id) {
         return;
     }
@@ -180,88 +181,25 @@ fn alloc_nodes<'a>(r: &Rules, rule_id: usize,
     match rule {
         RuleKind::Leaf(leaf_value) => {
             let new_b = arena.alloc(Val::Leaf(*leaf_value));
-            // let new_b = Box::new(Val::Leaf(*leaf_value));
             memo.borrow_mut().insert(rule_id, new_b);
         },
         RuleKind::ChildIds(child_ids) => {
             let mut child_vec = vec![];
             {
-                let memo_b = memo.borrow();
                 for child_id in child_ids {
-                    let child_b = *memo_b.get(child_id).unwrap();
+                    let child_exists = memo.borrow().contains_key(child_id);
+                    if !child_exists {
+                        build_rule_tree_recursive(r, *child_id, arena, memo);
+                    } 
+                    let child_b = *memo.borrow().get(&child_id).unwrap();
                     child_vec.push(child_b);
                 }
             }
             let val = Val::Add(child_vec);
             let new_b = arena.alloc(val);
-            // let new_b = Box::new(val);
             memo.borrow_mut().insert(rule_id, new_b);
         },
     }
-
-    // match memo.borrow_mut().entry(rule_id) {
-    //     std::collections::hash_map::Entry::Occupied(..) => (),
-    //     std::collections::hash_map::Entry::Vacant(entry) => {
-    //         let rule = &r[&rule_id];
-    //         match rule {
-    //             RuleKind::Leaf(leaf_value) => {
-    //                 let new_b = Box::new(Val::Leaf(*leaf_value));
-    //                 entry.insert(new_b);
-    //             },
-    //             RuleKind::ChildIds(child_ids) => {
-    //                 let mut child_vec = vec![];
-    //                 let memo_b = memo.borrow();
-    //                 for child_id in child_ids {
-    //                     let child_b = memo_b.get(child_id).unwrap().as_ref();
-    //                     child_vec.push(child_b);
-    //                 }
-    //                 let val = Val::Add(child_vec);
-    //                 let new_b = Box::new(val);
-    //                 entry.insert(new_b);
-    //             },
-    //         }
-    //      },
-    // };
-}
-
-// fn init_nodes<'a>(r: &Rules, rule_id: usize, memo: &'a RefCell<std::collections::HashMap<Id, &'a Val<'a>>>) {
-//     let rule = &r[&rule_id];
-//     match rule {
-//         RuleKind::Leaf(..) => (),
-//         RuleKind::ChildIds(child_ids) => {
-//             let memo_b = memo.borrow();
-//             let branch = *memo_b.get(&rule_id).unwrap();
-//             match branch {
-//                 Val::Add(cell) => {
-//                     let mut borrowed_cell = cell.borrow_mut();
-//                     if borrowed_cell.is_none() {
-//                         let mut child_vec = vec![];
-//                         for child_id in child_ids {
-//                             let child_b = *memo_b.get(child_id).unwrap();
-//                             child_vec.push(child_b);
-//                         }
-//                         *borrowed_cell = Some(child_vec);
-//                     }
-//                 },
-//                 _ => unreachable!(),
-//             }
-//         },
-//     }
-// }
-
-
-
-fn init_post_order_vec(r: &Rules, rule_id: usize, post_order_vec: &mut Vec<usize>) {
-    let rule = &r[&rule_id];
-    match rule {
-        RuleKind::Leaf(..) => (),
-        RuleKind::ChildIds(child_ids) => {
-            for child_id in child_ids {
-                init_post_order_vec(r, *child_id, post_order_vec)
-            }
-        },
-    }
-    post_order_vec.push(rule_id);
 }
 
 fn init_boxed_vals() {
@@ -271,13 +209,8 @@ fn init_boxed_vals() {
     r.insert(2, RuleKind::Leaf(5));
 
     let arena = typed_arena::Arena::new();
-    let memo = RefCell::new(FuncMap::new());
-    let mut post_order_vec:Vec<usize> = vec![];
-    init_post_order_vec(&r, 0, &mut post_order_vec);
-    for rule_id in post_order_vec {
-        alloc_nodes(&r, rule_id, &arena, &memo);
-        // init_nodes(&r, rule_id, &memo);
-    }
+    let memo = RefCell::new(RuleNodeMap::new());
+    build_rule_tree_recursive(&r, 0, &arena, &memo);
     dbg!(&memo);
 }
 
