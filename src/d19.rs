@@ -12,11 +12,11 @@ type SubruleAlternatives = Vec<Subrule>;
 
 type InputType<'a> = &'a str;
 // type NomError<'a> = nom::error::Error<InputType<'a>>;
-type DynParser<'a, 'p> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'p;
-type BoxedParser<'a, 'p> = Box<DynParser<'a, 'p>>;
-type DynParserPointer<'a, 'p> = *mut DynParser<'a, 'p>;
+type DynParser<'a> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'a;
+type BoxedParser<'a> = Box<DynParser<'a>>;
+// type DynParserPointer<'a, 'p> = *mut DynParser<'a, 'p>;
 // type RcParser<'a> = std::rc::Rc<std::cell::RefCell<DynParser<'a>>>;
-type NomParserMap<'a, 'p> = std::collections::HashMap<RuleId, BoxedParser<'a, 'p>>;
+// type NomParserMap<'a> = std::collections::HashMap<RuleId, BoxedParser<'a>>;
 
 #[derive(Debug, Display)]
 enum Rule {
@@ -191,45 +191,43 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
     res
 }
 
-fn build_nom_subrole_parser<'a, 'p>(r: &Rules, s: SubruleRef, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
+fn build_nom_subrole_parser<'a>(r: &Rules, s: SubruleRef) -> BoxedParser<'a> {
     let mut subrule_it = s.iter();
     let first_rule_idx = subrule_it.next().unwrap();
-    let mut first_p_boxed = build_regular_nom_parser(r, *first_rule_idx, nom_map);
+    let mut first_p_boxed = build_regular_nom_parser(r, *first_rule_idx);
 
     for new_rule_idx in subrule_it {
-        let new_p_boxed = build_regular_nom_parser(r, *new_rule_idx, nom_map);
-        // let new_p_leaked = Box::leak(new_p_boxed);
-        // let first_p_leaked = Box::leak(first_p_boxed);
+        let new_p_boxed = build_regular_nom_parser(r, *new_rule_idx);
         let sequenced = nom::sequence::pair(first_p_boxed, new_p_boxed);
-        first_p_boxed = &mut nom::combinator::recognize(sequenced);
+        first_p_boxed = Box::new(nom::combinator::recognize(sequenced));
     }
-    let boxed: BoxedParser<'a, 'p> = Box::new(first_p_boxed);
-    boxed
+    first_p_boxed
 }
 
-fn build_nom_alternative_parser<'a, 'p>(r: &Rules, new_alternative: SubruleRef, first_alternative_boxed_p: BoxedParser<'a, 'p>, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
-    let new_alternative_boxed_p = build_nom_subrole_parser(r, new_alternative, nom_map);
-    // let new_alternative_leaked_p = Box::leak(new_alternative_boxed_p);
-    // let first_alternative_leaked_p = Box::leak(first_alternative_boxed_p);
+fn build_nom_alternative_parser<'a>(r: &Rules, 
+    new_alternative: SubruleRef, 
+    first_alternative_boxed_p: BoxedParser<'a>, 
+    ) -> BoxedParser<'a> {
+    let new_alternative_boxed_p = build_nom_subrole_parser(r, new_alternative);
     let alted = nom::branch::alt((first_alternative_boxed_p, new_alternative_boxed_p));
-    let boxed: BoxedParser<'a, 'p> = Box::new(alted);
+    let boxed: BoxedParser<'a> = Box::new(alted);
     boxed
 }
 
-fn build_nom_parser_8<'a, 'p>(r: &Rules, repeat_count: usize, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
+fn build_nom_parser_8<'a>(r: &Rules, repeat_count: usize) -> BoxedParser<'a> {
     // Special case looping parser 8.
-    let p = build_regular_nom_parser(r, 42, nom_map);
+    let p = build_regular_nom_parser(r, 42);
     let p = nom::combinator::recognize(p);
     let p = nom::multi::count(p, repeat_count);
     let p = nom::combinator::recognize(p);
     Box::new(p)
 }
 
-fn build_nom_parser_11<'a, 'p>(r: &Rules, repeat_count: usize, nom_map: &'p mut NomParserMap) -> BoxedParser<'a, 'p> {
+fn build_nom_parser_11<'a>(r: &Rules, repeat_count: usize) -> BoxedParser<'a> {
     // Special case looping parser 11.
-    let p_42 = build_regular_nom_parser(r, 42, nom_map);
+    let p_42 = build_regular_nom_parser(r, 42);
     let p_42 = nom::combinator::recognize(p_42);
-    let p_31 = build_regular_nom_parser(r, 31, nom_map);
+    let p_31 = build_regular_nom_parser(r, 31);
     let p_31 = nom::combinator::recognize(p_31);
 
     let p_42 = nom::multi::count(p_42, repeat_count);
@@ -244,15 +242,7 @@ fn build_nom_parser_11<'a, 'p>(r: &Rules, repeat_count: usize, nom_map: &'p mut 
     Box::new(p)
 }
 
-fn build_regular_nom_parser<'a, 'p>(r: &Rules, rule_idx: usize, nom_map: &'p mut NomParserMap) -> &'p mut DynParser<'a, 'p> {
-    if let Some(boxed_p) = nom_map.get(&rule_idx) {
-        let p_raw = boxed_p.as_mut() as *mut DynParser;
-        unsafe {
-            let p_ref = &mut *p_raw;
-            return p_ref;
-        }
-    }
-
+fn build_regular_nom_parser<'a>(r: &Rules, rule_idx: usize) -> BoxedParser<'a> {
     let rule = &r[&rule_idx];
     let res = match rule {
         Rule::Char(c) => {
@@ -263,47 +253,23 @@ fn build_regular_nom_parser<'a, 'p>(r: &Rules, rule_idx: usize, nom_map: &'p mut
         Rule::Alternatives(alternatives) => {
             let mut alternatives_it = alternatives.iter();
             let alternative = alternatives_it.next().unwrap();
-            let mut first_alternative_boxed_p = build_nom_subrole_parser(r, alternative, nom_map);
+            let mut first_alternative_boxed_p = build_nom_subrole_parser(r, alternative);
 
             for new_alternative in alternatives_it {
-                first_alternative_boxed_p = build_nom_alternative_parser(r, new_alternative, first_alternative_boxed_p, nom_map);
+                first_alternative_boxed_p = build_nom_alternative_parser(r, new_alternative, first_alternative_boxed_p);
             }
             first_alternative_boxed_p
         },
     };
-
-    let res_raw = res.as_mut() as *mut DynParser;
-    unsafe {
-        let res_ref = &mut *res_raw;
-        res_ref
-    }
+    res
 }
 
-// fn bla<'a>() -> impl FnMut(&'a str) -> nom::IResult<&'a str, &'a str> +'a {
-//     let p = nom::character::complete::char::<&str, nom::error::Error<&str>>('a');
-//     let p1 = nom::combinator::recognize(p);
-
-//     let p = nom::character::complete::char::<&str, nom::error::Error<&str>>('b');
-//     let p2 = nom::combinator::recognize(p);
-
-//     let p1: RcParser = Rc::new(RefCell::new(p1));
-//     let p2: RcParser = Rc::new(RefCell::new(p2));
-
-//     let mut a = p1.borrow_mut();
-//     let b = &mut *a;
-
-//     let mut c = p2.borrow_mut();
-//     let d = &mut *c;
-//     let pc = nom::combinator::recognize(nom::sequence::pair(b, d));
-//     pc
-// }
-
-fn is_message_valid_using_nom(m: &str, r: &Rules, nom_map: &mut NomParserMap) -> bool {
+fn is_message_valid_using_nom(m: &str, r: &Rules) -> bool {
     let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
 
     for repeat_counts in repeat_cartesian_iter {
-        let mut nom_p_8 = build_nom_parser_8(&r, repeat_counts[0], nom_map);
-        let mut nom_p_11 = build_nom_parser_11(&r, repeat_counts[1], nom_map);
+        let mut nom_p_8 = build_nom_parser_8(&r, repeat_counts[0]);
+        let mut nom_p_11 = build_nom_parser_11(&r, repeat_counts[1]);
         let res = nom_p_8.as_mut()(m);
         let res = res.and_then(|(input, _output)|{
             // dbg!((&input, &_output));
@@ -333,13 +299,13 @@ fn count_valid_messages(s: &str) -> usize {
 fn count_valid_messages_p2(s: &str) -> usize {
     let (mut rules, messages) = parse_rules_and_messages(s);
     add_loop_to_rules(&mut rules);
-    let mut nom_map = NomParserMap::new();
+    // let mut nom_map = NomParserMap::new();
     
     dbg!(&messages[0]);
     messages
         .iter()
         .map(|m| {
-            let v = is_message_valid_using_nom(m, &rules, &mut nom_map);
+            let v = is_message_valid_using_nom(m, &rules);
             println!("m: {} valid: {}", m, v);
             v
         })
@@ -365,7 +331,7 @@ fn solve_p2() -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    // solve_p1().ok();
+    solve_p1().ok();
     solve_p2().ok();
     Ok(())
 }
