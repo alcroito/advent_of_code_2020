@@ -16,12 +16,12 @@ type Messages = Vec<Message>;
 type SubruleAlternatives = Vec<Subrule>;
 type Rules = std::collections::HashMap<RuleId, Rule>;
 
-type InputType<'i> = &'i str;
-type NomError<'i> = nom::error::Error<InputType<'i>>;
-type DynParser<'i, 'f> = dyn FnMut(InputType<'i>) -> nom::IResult<InputType<'i>, InputType<'i>> + 'f;
-type BoxedParser<'i, 'f> = Box<DynParser<'i, 'f>>;
-type NomParserWrapperExact<'i, 'f> = NomParserWrapper<BoxedParser<'i, 'f>>;
-type NomParserMap<'i, 'f> = std::collections::HashMap<RuleId, NomParserWrapperExact<'i, 'f>>;
+type InputType<'a> = &'a str;
+type NomError<'a> = nom::error::Error<InputType<'a>>;
+type DynParser<'a> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'a;
+type BoxedParser<'a> = Box<DynParser<'a>>;
+type NomParserWrapperExact<'a> = NomParserWrapper<BoxedParser<'a>>;
+type NomParserMap<'a> = std::collections::HashMap<RuleId, NomParserWrapperExact<'a>>;
 
 struct NomParserWrapper<F> {
     f: Rc<RefCell<F>>
@@ -226,27 +226,27 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
     res
 }
 
-fn build_nom_subrole_parser<'i, 'f>(r: &Rules, s: SubruleRef)
--> NomParserWrapperExact<'i, 'f>
+fn build_nom_subrole_parser<'a>(r: &Rules, s: SubruleRef)
+-> NomParserWrapperExact<'a>
     
 {
     let mut subrule_it = s.iter();
     let first_rule_idx = subrule_it.next().unwrap();
-    let mut first_p_boxed: BoxedParser<'i, 'f> = Box::new(recognize(build_regular_nom_parser(r, *first_rule_idx)));
+    let mut first_p_boxed: BoxedParser = Box::new(recognize(build_regular_nom_parser(r, *first_rule_idx)));
 
     for new_rule_idx in subrule_it {
-        let new_p_boxed: BoxedParser<'i, 'f> = Box::new(recognize(build_regular_nom_parser(r, *new_rule_idx)));
+        let new_p_boxed = Box::new(recognize(build_regular_nom_parser(r, *new_rule_idx)));
         let sequenced = nom::sequence::pair(first_p_boxed, new_p_boxed);
-        first_p_boxed: BoxedParser<'i, 'f> = Box::new(recognize(sequenced));
+        first_p_boxed = Box::new(recognize(sequenced));
     }
     nom_parser_wrapper_new(first_p_boxed)
 }
 
-fn build_nom_alternative_parser<'i, 'f>(r: &Rules, 
+fn build_nom_alternative_parser<'a>(r: &Rules, 
     new_alternative: SubruleRef, 
-    first_alternative_boxed_p: BoxedParser<'i, 'f>, 
+    first_alternative_boxed_p: BoxedParser<'a>, 
     ) 
-    -> BoxedParser<'i, 'f>
+    -> BoxedParser<'a>
     {
     let new_alternative_boxed_p: BoxedParser = Box::new(recognize(build_nom_subrole_parser(r, new_alternative)));
     let alted = nom::branch::alt((first_alternative_boxed_p, new_alternative_boxed_p));
@@ -254,8 +254,8 @@ fn build_nom_alternative_parser<'i, 'f>(r: &Rules,
     alted
 }
 
-fn build_nom_parser_8<'i, 'f>(repeat_count: usize, nom_map: &'f NomParserMap<'i, 'f>)
--> NomParserWrapperExact<'i, 'f>
+fn build_nom_parser_8<'a>(repeat_count: usize, nom_map: Rc<NomParserMap<'a>>)
+-> NomParserWrapperExact<'a>
  {
     // Special case looping parser 8.
     let p_42 = nom_map.get(&42).unwrap().clone();
@@ -266,8 +266,8 @@ fn build_nom_parser_8<'i, 'f>(repeat_count: usize, nom_map: &'f NomParserMap<'i,
     nom_parser_wrapper_new(p)
 }
 
-fn build_nom_parser_11<'i, 'f>(repeat_count: usize, nom_map: &'f NomParserMap<'i, 'f>)
--> NomParserWrapperExact<'i, 'f> {
+fn build_nom_parser_11<'a>(repeat_count: usize, nom_map: Rc<NomParserMap<'a>>)
+-> NomParserWrapperExact<'a> {
     // Special case looping parser 11.
     let p_42 = nom_map.get(&42).unwrap().clone();
     let p_31 = nom_map.get(&31).unwrap().clone();
@@ -284,8 +284,8 @@ fn build_nom_parser_11<'i, 'f>(repeat_count: usize, nom_map: &'f NomParserMap<'i
     nom_parser_wrapper_new(p)
 }
 
-fn build_regular_nom_parser<'i, 'f>(r: &Rules, rule_idx: usize) 
--> NomParserWrapperExact<'i, 'f>
+fn build_regular_nom_parser<'a>(r: &Rules, rule_idx: usize) 
+-> NomParserWrapperExact<'a>
 {
     let rule = &r[&rule_idx];
     let res = match rule {
@@ -308,14 +308,14 @@ fn build_regular_nom_parser<'i, 'f>(r: &Rules, rule_idx: usize)
     res
 }
 
-fn is_message_valid_using_nom<'i, 'f>(m: &'i str, nom_map: &'f NomParserMap<'i, 'f>) -> bool
+fn is_message_valid_using_nom<'a>(m: &'a str, nom_map: Rc<NomParserMap<'a>>) -> bool
 
  {
     let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
 
     for repeat_counts in repeat_cartesian_iter {
-        let mut nom_p_8 = build_nom_parser_8(repeat_counts[0], nom_map);
-        let mut nom_p_11 = build_nom_parser_11(repeat_counts[1], nom_map);
+        let mut nom_p_8 = build_nom_parser_8(repeat_counts[0], nom_map.clone());
+        let mut nom_p_11 = build_nom_parser_11(repeat_counts[1], nom_map.clone());
         let res = nom_p_8.parse(m);
         let res = res.and_then(|(input, _output)|{
             // dbg!((&input, &_output));
@@ -359,16 +359,21 @@ fn count_valid_messages_p2(s: &str) -> usize {
     // let p_31: NomParserWrapperExact = build_regular_nom_parser(&rules, 31);
     // let p_42: NomParserWrapperExact = build_regular_nom_parser(&rules, 42);
     
+    let nom_map_rc = Rc::new(nom_map);
     dbg!(&messages[0]);
-    messages
+    let final_count;
+    {
+        final_count = messages
         .iter()
         .map(|m| {
-            let v = is_message_valid_using_nom(m, &nom_map);
+            let v = is_message_valid_using_nom(m, nom_map_rc.clone());
             println!("m: {} valid: {}", m, v);
             v
         })
         .filter(|is_valid| *is_valid)
         .count()
+    }
+    final_count
 }
 
 fn solve_p1() -> Result<()> {
