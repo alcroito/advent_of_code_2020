@@ -92,6 +92,10 @@ path = "src/play_with_nom_errors.rs"
 name = "playground"
 path = "src/playground.rs"
 
+[[bin]]
+name = "playground2"
+path = "src/playground2.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

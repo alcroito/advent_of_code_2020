@@ -120,98 +120,88 @@ fn pass_mutable_dyn_closure() {
     println!("val is: {}", state);
 }
 
-fn call_my_fn<F>(mut f: F) 
-where F: FnMut() -> usize
-{
+fn call_my_fn<F>(mut f: F) where F: FnMut() -> usize {
     f();
 }
-
-// enum RuleKind {
-//     Leaf(i32),
-//     Wrapper(usize)
-// }
-
-// type Id = usize;
-// // type MyFunc = FnMut(usize) -> usize;
-// type RefFunc<'f> = dyn FnMut(usize) -> usize + 'f;
-// type BoxedFunc<'f> = Box<dyn FnMut(usize) -> usize + 'f>;
-// type Rules = std::collections::HashMap<Id, Vec<RuleKind>>;
-// type FuncMap<'f> = std::collections::HashMap<Id, BoxedFunc<'f>>;
-
-// fn build_func<'r, 'm>(_r: &'r Rules, rule_id: usize, memo: &'m mut FuncMap) -> &'m RefFunc<'m> {
-//     let a = match memo.entry(rule_id) {
-//         std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-//         std::collections::hash_map::Entry::Vacant(entry) => {
-//             let new_b = Box::new(|_| 1);
-//             entry.insert(new_b)     
-//          },
-//     };
-//     a
-//     // if let Some(b_boxed) = memo.get(&rule_id) {
-//     //     let b_ref = b_boxed.as_ref();
-//     //     return b_ref;
-//     // }
-//     // let new_b = Box::new(|_| 1);
-//     // let new_b_ref = &*new_b;
-//     // memo.insert(rule_id, new_b);
-//     // new_b_ref
-// }
 
 type Id = usize;
 enum RuleKind {
     Leaf(i32),
-    ChildIds(Vec<Id>)
+    Composite(Vec<Id>)
 }
 #[derive(Debug)]
-enum Val<'a> {
+enum RuleTreeNode<'a> {
     Leaf(i32),
-    Add(Vec<&'a Val<'a>>)
+    Composite(Vec<&'a RuleTreeNode<'a>>)
 }
 
 type Rules = std::collections::HashMap<Id, RuleKind>;
-type RuleNodeMap<'a> = std::collections::HashMap<Id, &'a Val<'a>>;
+type RuleNodeMap<'a> = std::collections::HashMap<Id, &'a RuleTreeNode<'a>>;
+struct RuleTree<'a> {
+    rules: Rules,
+    arena: &'a typed_arena::Arena<RuleTreeNode<'a>>,
+    rule_node_map: RefCell<RuleNodeMap<'a>>
+}
 
-fn build_rule_tree_recursive<'a>(r: &Rules, rule_id: usize, 
-                                 arena: &'a typed_arena::Arena<Val<'a>>, 
-                                 memo: &RefCell<RuleNodeMap<'a>>) {
-    if memo.borrow().contains_key(&rule_id) {
-        return;
+impl<'a> RuleTree<'a> {
+    fn new(r: Rules, arena: &'a typed_arena::Arena<RuleTreeNode<'a>>) -> RuleTree<'a> {
+        RuleTree {
+            rules: r, 
+            arena,
+            rule_node_map: RefCell::new(RuleNodeMap::new()),
+        }
     }
-    let rule = &r[&rule_id];
-    match rule {
-        RuleKind::Leaf(leaf_value) => {
-            let new_b = arena.alloc(Val::Leaf(*leaf_value));
-            memo.borrow_mut().insert(rule_id, new_b);
-        },
-        RuleKind::ChildIds(child_ids) => {
-            let mut child_vec = vec![];
-            {
-                for child_id in child_ids {
-                    let child_exists = memo.borrow().contains_key(child_id);
-                    if !child_exists {
-                        build_rule_tree_recursive(r, *child_id, arena, memo);
-                    } 
-                    let child_b = *memo.borrow().get(&child_id).unwrap();
-                    child_vec.push(child_b);
+
+    fn build_rule_tree_recursive(&self, rule_id: usize) {
+        let t = self;
+        if t.rule_node_map.borrow().contains_key(&rule_id) {
+            return;
+        }
+        let rule = &t.rules[&rule_id];
+        match rule {
+            RuleKind::Leaf(leaf_value) => {
+                let new_arena_node = t.arena.alloc(RuleTreeNode::Leaf(*leaf_value));
+                t.rule_node_map.borrow_mut().insert(rule_id, new_arena_node);
+            },
+            RuleKind::Composite(child_ids) => {
+                let mut child_vec = vec![];
+                {
+                    for child_id in child_ids {
+                        let child_exists = t.rule_node_map.borrow().contains_key(child_id);
+                        if !child_exists {
+                            t.build_rule_tree_recursive(*child_id);
+                        } 
+                        let child_arena_node = *t.rule_node_map.borrow().get(&child_id).unwrap();
+                        child_vec.push(child_arena_node);
+                    }
                 }
-            }
-            let val = Val::Add(child_vec);
-            let new_b = arena.alloc(val);
-            memo.borrow_mut().insert(rule_id, new_b);
-        },
+                let val = RuleTreeNode::Composite(child_vec);
+                let new_arena_node = t.arena.alloc(val);
+                t.rule_node_map.borrow_mut().insert(rule_id, new_arena_node);
+            },
+        }
     }
 }
 
-fn init_boxed_vals() {
+fn consume_tree(t: RuleTree) {
+    dbg!(t.rule_node_map);
+}
+
+fn example_of_clunky_arena_based_graph() {
     let mut r = Rules::new();
-    r.insert(0, RuleKind::ChildIds(vec![1]));
-    r.insert(1, RuleKind::ChildIds(vec![2, 2]));
+    r.insert(0, RuleKind::Composite(vec![1]));
+    r.insert(1, RuleKind::Composite(vec![2, 2]));
     r.insert(2, RuleKind::Leaf(5));
 
+    // Unfortunately it's not possible to encapsulate both the arena and the RuleTree into a single
+    // struct, because that would be a self-referential struct, and it can't be moved by consume_tree.
+    // Loooooots of searching around, and the best advice people give is either to keep the structs
+    // separate, or revert to using index based graphs rather than refs.
+    // owning_ref also seems to not help. Haven't tried rental because that's unmaintaned.
     let arena = typed_arena::Arena::new();
-    let memo = RefCell::new(RuleNodeMap::new());
-    build_rule_tree_recursive(&r, 0, &arena, &memo);
-    dbg!(&memo);
+    let rule_tree = RuleTree::new(r, &arena);
+    rule_tree.build_rule_tree_recursive(0);
+    consume_tree(rule_tree);
 }
 
 fn example_of_valid_temporary_mutable_borrows() -> i32 {
@@ -258,8 +248,7 @@ fn bar(val: *mut i32) {
 fn main() {
     example_of_undefined_behavior_multiple_aliasing_mutable_refs();
     example_of_valid_temporary_mutable_borrows();
-
-    init_boxed_vals();
+    example_of_clunky_arena_based_graph();
 
     // (0..3)
     // .map(|i| (i * 2)..(i * 2 + 2))
