@@ -1,5 +1,6 @@
 use std::cell::UnsafeCell;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use itertools::Itertools;
 
@@ -87,11 +88,11 @@ fn nested_iterator_borrowing() {
 fn pass_mutable_dyn_closure() {
     let mut state = 0;
     {   
-        let closure = || {
-            state += 1;
+        let closure = |a: i32| {
+            state += 1 + a as usize;
             state
         };
-        let mut boxed_closure: Box<dyn FnMut() -> usize> = Box::new(closure);
+        let mut boxed_closure: Box<dyn FnMut(i32) -> usize> = Box::new(closure);
         let unboxed_closure = boxed_closure.as_mut();
         call_my_fn(unboxed_closure);
     }
@@ -120,8 +121,22 @@ fn pass_mutable_dyn_closure() {
     println!("val is: {}", state);
 }
 
-fn call_my_fn<F>(mut f: F) where F: FnMut() -> usize {
-    f();
+fn pass_mutable_dyn_rc_closure() {
+    let mut state = 0;
+    {   
+        let closure = |a: i32| {
+            state += 1 + a as usize;
+            state
+        };
+        let boxed_closure: Rc<RefCell<dyn FnMut(i32) -> usize>> = Rc::new(RefCell::new(closure));
+        let mut unboxed_closure = boxed_closure.borrow_mut();
+        let caller = &mut *unboxed_closure;
+        call_my_fn(caller);
+    }
+}
+
+fn call_my_fn<F>(mut f: F) where F: FnMut(i32) -> usize {
+    f(4);
 }
 
 type Id = usize;
@@ -258,6 +273,7 @@ fn main() {
     .multi_cartesian_product().for_each(|o| println!("{:?}", o));
 
     pass_mutable_dyn_closure();
+    pass_mutable_dyn_rc_closure();
     nested_iterator_borrowing();
     play();
     call_closure(&CallKind::CallF1);
