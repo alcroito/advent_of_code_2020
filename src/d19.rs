@@ -11,12 +11,12 @@ use nom::branch::alt;
 use nom::IResult;
 
 type RuleId = usize;
-type Subrule = Vec<usize>;
-type SubruleRef<'a> = &'a [usize];
+type RuleSequence = Vec<RuleId>;
+type RuleSequenceRef<'a> = &'a [RuleId];
 type Message = String;
 type Messages = Vec<Message>;
-type SubruleAlternatives = Vec<Subrule>;
-type Rules = std::collections::HashMap<RuleId, Rule>;
+type RuleAlternatives = Vec<RuleSequence>;
+type RulesMap = std::collections::HashMap<RuleId, Rule>;
 
 type InputType<'a> = &'a str;
 type NomError<'a> = nom::error::Error<InputType<'a>>;
@@ -61,10 +61,10 @@ enum Rule {
     #[display(fmt = "{}", _0)]
     Char(char),
     #[display(fmt = "{:?}", _0)]
-    Alternatives(SubruleAlternatives),
+    Alternatives(RuleAlternatives),
 }
 
-fn parse_rules_and_messages(s: &str) -> (Rules, Messages) {
+fn parse_rules_and_messages(s: &str) -> (RulesMap, Messages) {
     let s = s.trim();
     let sep = "\n\n";
     let rules_end_idx = s.find(sep).unwrap();
@@ -77,27 +77,27 @@ fn parse_rules_and_messages(s: &str) -> (Rules, Messages) {
             let mut l = l.split(':');
             let rule_id = l.next().unwrap().parse::<usize>().unwrap();
 
-            let mut subrules_it = l.next().unwrap().trim().split(" | ");
-            let subrule_1_str = subrules_it.next().unwrap();
+            let mut alternatives_it = l.next().unwrap().trim().split(" | ");
+            let alternative_1_str = alternatives_it.next().unwrap();
             let final_rule;
-            if subrule_1_str.starts_with('"') {
-                final_rule = Some(Rule::Char(subrule_1_str.chars().nth(1).unwrap()));
+            if alternative_1_str.starts_with('"') {
+                final_rule = Some(Rule::Char(alternative_1_str.chars().nth(1).unwrap()));
             } else {
-                let subrule_collector = |sub_str: &str| {
+                let rule_sequence_collector = |sub_str: &str| {
                     sub_str
                         .split_whitespace()
                         .map(|c| c.parse::<usize>().unwrap())
                         .collect_vec()
                 };
-                let mut subrules = vec![subrule_collector(subrule_1_str)];
-                for subrule in subrules_it {
-                    subrules.push(subrule_collector(subrule));
+                let mut alternatives = vec![rule_sequence_collector(alternative_1_str)];
+                for alternative in alternatives_it {
+                    alternatives.push(rule_sequence_collector(alternative));
                 }
-                final_rule = Some(Rule::Alternatives(subrules));
+                final_rule = Some(Rule::Alternatives(alternatives));
             }
             (rule_id, final_rule.unwrap())
         })
-        .collect::<Rules>();
+        .collect::<RulesMap>();
 
     let messages = messages_str
         .lines()
@@ -107,7 +107,7 @@ fn parse_rules_and_messages(s: &str) -> (Rules, Messages) {
     (rules, messages)
 }
 
-fn add_loop_to_rules(r: &mut Rules) {
+fn add_loop_to_rules(r: &mut RulesMap) {
     if let Some(v) = r.get_mut(&8) {
         *v = Rule::Alternatives(vec![vec![42], vec![1000]])
     };
@@ -116,66 +116,53 @@ fn add_loop_to_rules(r: &mut Rules) {
     if let Some(v) = r.get_mut(&11) {
         *v = Rule::Alternatives(vec![vec![42, 31], vec![42, 11, 31]])
     };
-
-    // // Expand '11 -> 42 31 | 42 11 31' rule into a limited number
-    // // of non-looping alternatives up to a specific k.
-    // // r.insert(2000, Rule::Alternatives(vec![vec![42, 31]]));
-    // let mut r11_alternatives = vec![];
-    // for i in 1..=4 {
-    //     let first = std::iter::repeat(42).take(i);
-    //     let second = std::iter::repeat(31).take(i);
-    //     r11_alternatives.push(first.chain(second).collect_vec());
-    // }
-    // if let Some(v) = r.get_mut(&11) {
-    //     *v = Rule::Alternatives(r11_alternatives)
-    // };
 }
 
-fn is_message_valid_wrapper(m: &str, r: &Rules) -> bool {
-    let mut rules_applied = Vec::<usize>::new();
-    let (matches, final_idx) = is_message_valid(m, r, 0, 0, 0, &mut rules_applied);
-    if !matches {
+fn is_message_valid_wrapper(m: &str, r: &RulesMap) -> bool {
+    let mut rules_applied = Vec::<RuleId>::new();
+    let (is_match, final_matched_idx) = is_message_valid(m, r, 0, 0, 0, &mut rules_applied);
+    if !is_match {
         return false;
     }
-    final_idx == m.len()
+    final_matched_idx == m.len()
 }
 
-fn alt_count(r: &Rules, rule_idx: usize) -> usize {
-    let rule = &r[&rule_idx];
+fn alt_count(r: &RulesMap, rule_id: usize) -> usize {
+    let rule = &r[&rule_id];
     match rule {
         Rule::Char(..) => 1,
-        Rule::Alternatives(subrules) => subrules.len(),
+        Rule::Alternatives(alternatives) => alternatives.len(),
     }
 }
 
-fn check_if_matches_subrule(
+fn check_if_matches_sequence(
     m: &str,
-    r: &Rules,
-    subrule: &[usize],
+    r: &RulesMap,
+    sequence: &[usize],
     message_idx: usize,
-    rules_applied: &mut Vec<usize>,
+    rules_applied: &mut Vec<RuleId>,
 ) -> (bool, usize) {
-    let subrule_cartesian_iter = subrule.iter().map(|rule_idx| 0..alt_count(r, *rule_idx)).multi_cartesian_product();
+    // If the sequence is [10, 20] and rule 10 has 1 alternative and rule 20 has 2 alternatives,
+    // the iterator goes through [0, 0] and [0, 1] where the numbers represent which alternative
+    // of the rule to try.
+    let cartesian_iter = sequence.iter().map(|rule_idx| 0..alt_count(r, *rule_idx)).multi_cartesian_product();
 
-    // let blob = subrule_cartesian_iter.clone().collect_vec();
-    // let a = 4 + 4;
-    
-    for candidate_subrule_indices in subrule_cartesian_iter {
-        let mut current_idx = message_idx;
+    for candidate_alternative_ids in cartesian_iter {
+        let mut current_message_idx = message_idx;
         let rules_applied_copy = rules_applied.clone();
         let mut valid_cartesian_choice = true;
 
-        for (new_rule_pos, new_rule_idx) in subrule.iter().enumerate() {
-            let subrule_to_apply = candidate_subrule_indices[new_rule_pos];
-            if new_rule_idx == &8 {
+        for (sequence_pos, sequence_rule_id) in sequence.iter().enumerate() {
+            let alternative_to_apply = candidate_alternative_ids[sequence_pos];
+            if sequence_rule_id == &8 {
                 // println!("looping 8");
             }
-            if new_rule_idx == &11 {
+            if sequence_rule_id == &11 {
                 // println!("looping 11");
             }
-            let (matches, returned_message_idx) = is_message_valid(m, r, current_idx, *new_rule_idx, subrule_to_apply, rules_applied);
-            if matches {
-                current_idx = returned_message_idx;
+            let (is_match, returned_message_idx) = is_message_valid(m, r, current_message_idx, *sequence_rule_id, alternative_to_apply, rules_applied);
+            if is_match {
+                current_message_idx = returned_message_idx;
             } else {
                 while rules_applied.len() != rules_applied_copy.len() {
                     rules_applied.pop();
@@ -186,39 +173,39 @@ fn check_if_matches_subrule(
         }
 
         if valid_cartesian_choice {
-            return (true, current_idx)
+            return (true, current_message_idx)
         }
     }
     (false, message_idx)
 }
 
-fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, subrule_to_apply: usize, rules_applied: &mut Vec<usize>) -> (bool, usize) {
-    let rule = &r[&rule_idx];
+fn is_message_valid(m: &str, r: &RulesMap, message_pos: usize, rule_id: usize, alternative_to_apply: usize, rules_applied: &mut Vec<RuleId>) -> (bool, usize) {
+    let rule = &r[&rule_id];
 
     // let rules_applied = format!("{},{}", rules_applied, rule_idx);
-    rules_applied.push(rule_idx);
+    rules_applied.push(rule_id);
     // println!("m_i: {:2} {:2}:{}, \n  applied: {:?} len {}", message_idx, rule_idx, rule, rules_applied, rules_applied.len());
 
-    if message_idx >= m.len() {
+    if message_pos >= m.len() {
         // println!("m_i too long");
         rules_applied.pop();
-        return (false, message_idx)
+        return (false, message_pos)
     }
     // println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
 
     let res = match rule {
         Rule::Char(c) => {
-            let target_char = m.chars().nth(message_idx).unwrap();
+            let target_char = m.chars().nth(message_pos).unwrap();
             let matches = target_char == *c;
-            let return_idx = if matches {
-                message_idx + 1
+            let return_pos = if matches {
+                message_pos + 1
             } else {
-                message_idx
+                message_pos
             };
-            (matches, return_idx)
+            (matches, return_pos)
         }
-        Rule::Alternatives(subrules) => {
-            check_if_matches_subrule(m, r, &subrules[subrule_to_apply], message_idx, rules_applied)
+        Rule::Alternatives(alternatives) => {
+            check_if_matches_sequence(m, r, &alternatives[alternative_to_apply], message_pos, rules_applied)
         },
     };
     if !res.0 {
@@ -228,29 +215,29 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
     res
 }
 
-fn build_nom_subrole_parser<'a: 't, 't>(r: &Rules, s: SubruleRef)
+fn build_nom_sequence_parser<'a: 't, 't>(r: &RulesMap, s: RuleSequenceRef)
 -> NomParserWrapperExact<'a, 't>
 {
-    let mut subrule_it = s.iter();
-    let first_rule_idx = subrule_it.next().unwrap();
-    let mut first_p_boxed: BoxedParser = Box::new(recognize(build_regular_nom_parser(r, *first_rule_idx)));
+    let mut sequence_it = s.iter();
+    let first_rule_id = sequence_it.next().unwrap();
+    let mut current_p: BoxedParser = Box::new(recognize(build_regular_nom_parser(r, *first_rule_id)));
 
-    for new_rule_idx in subrule_it {
-        let new_p_boxed = Box::new(recognize(build_regular_nom_parser(r, *new_rule_idx)));
-        let sequenced = pair(first_p_boxed, new_p_boxed);
-        first_p_boxed = Box::new(recognize(sequenced));
+    for next_sequence_rule_id in sequence_it {
+        let next_p = Box::new(recognize(build_regular_nom_parser(r, *next_sequence_rule_id)));
+        let sequenced = pair(current_p, next_p);
+        current_p = Box::new(recognize(sequenced));
     }
-    nom_parser_wrapper_new(first_p_boxed)
+    nom_parser_wrapper_new(current_p)
 }
 
-fn build_nom_alternative_parser<'a: 't, 't>(r: &Rules, 
-    new_alternative: SubruleRef, 
-    first_alternative_boxed_p: BoxedParser<'a, 't>, 
+fn build_nom_alternative_parser<'a: 't, 't>(r: &RulesMap, 
+    next_alternative_seq_ids: RuleSequenceRef,
+    first_alternative: BoxedParser<'a, 't>, 
     ) 
     -> BoxedParser<'a, 't>
     {
-    let new_alternative_boxed_p: BoxedParser = Box::new(recognize(build_nom_subrole_parser(r, new_alternative)));
-    let alted = alt((first_alternative_boxed_p, new_alternative_boxed_p));
+    let new_alternative_boxed_p: BoxedParser = Box::new(recognize(build_nom_sequence_parser(r, next_alternative_seq_ids)));
+    let alted = alt((first_alternative, new_alternative_boxed_p));
     let alted: BoxedParser = Box::new(recognize(alted));
     alted
 }
@@ -282,10 +269,10 @@ fn build_nom_parser_11<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomPars
 
 // Unfortunately rust has some weird behavior / bug as described in 
 // https://github.com/rust-lang/rust/issues/79415 which is why we need the 'a: 't lifetime bound.
-fn build_regular_nom_parser<'a: 't, 't>(r: &Rules, rule_idx: usize) 
+fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize) 
 -> NomParserWrapperExact<'a, 't>
 {
-    let rule = &r[&rule_idx];
+    let rule = &r[&rule_id];
     let res = match rule {
         Rule::Char(c) => {
             let p = nom::character::complete::char(*c);
@@ -294,13 +281,13 @@ fn build_regular_nom_parser<'a: 't, 't>(r: &Rules, rule_idx: usize)
         }
         Rule::Alternatives(alternatives) => {
             let mut alternatives_it = alternatives.iter();
-            let alternative = alternatives_it.next().unwrap();
-            let mut first_alternative_boxed_p: BoxedParser = Box::new(recognize(build_nom_subrole_parser(r, alternative)));
+            let first_alternative_seq_ids = alternatives_it.next().unwrap();
+            let mut current_alternative: BoxedParser = Box::new(recognize(build_nom_sequence_parser(r, first_alternative_seq_ids)));
 
-            for new_alternative in alternatives_it {
-                first_alternative_boxed_p = Box::new(recognize(build_nom_alternative_parser(r, new_alternative, first_alternative_boxed_p)));
+            for next_alternative_seq_ids in alternatives_it {
+                current_alternative = Box::new(recognize(build_nom_alternative_parser(r, next_alternative_seq_ids, current_alternative)));
             }
-            NomParserWrapper::new(first_alternative_boxed_p)
+            NomParserWrapper::new(current_alternative)
         },
     };
     res
@@ -312,12 +299,12 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(m: &'a str, nom_map: &'m NomParser
     let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
 
     for repeat_counts in repeat_cartesian_iter {
-        let mut nom_p_8 = build_nom_parser_8(repeat_counts[0], nom_map);
-        let mut nom_p_11 = build_nom_parser_11(repeat_counts[1], nom_map);
-        let res = nom_p_8.parse(m);
+        let mut p_8 = build_nom_parser_8(repeat_counts[0], nom_map);
+        let mut p_11 = build_nom_parser_11(repeat_counts[1], nom_map);
+        let res = p_8.parse(m);
         let res = res.and_then(|(input, _output)|{
             // dbg!((&input, &_output));
-            nom_p_11.parse(input)
+            p_11.parse(input)
         });
         // dbg!(&res);
         let res = res.map(|(input, _)| input.is_empty()).unwrap_or(false);
@@ -331,7 +318,7 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(m: &'a str, nom_map: &'m NomParser
     false
 }
 
-fn prepare_part2_sub_parsers<'a: 't, 'm, 't>(r: &Rules, nom_map: &'m mut NomParserMap<'a, 't>) {
+fn prepare_part2_sub_parsers<'a: 't, 'm, 't>(r: &RulesMap, nom_map: &'m mut NomParserMap<'a, 't>) {
     let p_31 = build_regular_nom_parser(r, 31);
     nom_map.insert(31, p_31);
 
@@ -351,8 +338,12 @@ fn count_valid_messages(s: &str) -> usize {
 fn count_valid_messages_p2(s: &str) -> usize {
     let (mut rules, messages) = parse_rules_and_messages(s);
     add_loop_to_rules(&mut rules);
+    
+    // Memoize part 2 special parsers for quicker reconstruction
+    // of the final parser.
     let mut nom_map = NomParserMap::new();
     prepare_part2_sub_parsers(&rules, &mut nom_map);
+
     dbg!(&messages[0]);
     let final_count;
     {
