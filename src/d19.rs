@@ -25,6 +25,13 @@ type BoxedParser<'a, 't> = Box<DynParser<'a, 't>>;
 type NomParserWrapperExact<'a, 't> = NomParserWrapper<BoxedParser<'a, 't>>;
 type NomParserMap<'a, 't> = std::collections::HashMap<RuleId, NomParserWrapperExact<'a, 't>>;
 
+// This struct wraps a boxed nom parser and allows us to memoize certain
+// prebuilt parsers in a hashmap. These can then be used to build further parsers
+// as building blocks. Useful for part 2 when we build repeating parsers, and thus
+// save a lot of time on not rebuilding the base parsers.
+// The Rc is needed because the same base parser can be reused by a root parser.
+// The RefCell is necessary because nom parsers need to be mut FnMut, so we need
+// both sharing and interior mutability.
 struct NomParserWrapper<F> {
     f: Rc<RefCell<F>>
 }
@@ -331,6 +338,7 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(r: &RulesMap, m: &'a str, nom_map:
 
             let mut p_8 = build_nom_parser_8(p_8_repeat_count, nom_map);
             let mut p_11 = build_nom_parser_11(p_11_repeat_count, nom_map);
+
             let res = p_8.parse(m);
             let res = res.and_then(|(input, _output)|{
                 // dbg!((&input, &_output));
