@@ -281,23 +281,67 @@ fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize)
     res
 }
 
-fn is_message_valid_using_nom<'a: 't, 'm, 't>(m: &'a str, nom_map: &'m NomParserMap<'a, 't>) -> bool
+fn rule_shortest_matching_len(r: &RulesMap, rule_id: RuleId) -> usize {
+    let rule = &r[&rule_id];
+    match rule {
+        Rule::Char(_) => {
+            1
+        }
+        Rule::Alternatives(alternatives) => {
+            alternatives.iter()
+            .map(|sequence_rule_ids| 
+                sequence_rule_ids.iter().map(|seq_rule_id| rule_shortest_matching_len(r, *seq_rule_id)).sum()
+            )
+            .fold1(|prev_alternative: usize, next_alternative: usize| 
+                prev_alternative.max(next_alternative))
+            .unwrap()
+        },
+    }
+}
 
- {
-    let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
-    for repeat_counts in repeat_cartesian_iter {
-        let mut p_8 = build_nom_parser_8(repeat_counts[0], nom_map);
-        let mut p_11 = build_nom_parser_11(repeat_counts[1], nom_map);
-        let res = p_8.parse(m);
-        let res = res.and_then(|(input, _output)|{
-            // dbg!((&input, &_output));
-            p_11.parse(input)
-        });
-        // dbg!(&res);
-        let res = res.map(|(input, _)| input.is_empty()).unwrap_or(false);
-        // println!("is valid: {}", res);
-        if res {
-            return res
+fn is_message_valid_using_nom<'a: 't, 'm, 't>(r: &RulesMap, m: &'a str, nom_map: &'m NomParserMap<'a, 't>) -> bool
+{
+    // In order to match the message with rules that have loops, we consider an instance
+    // of a parser where each repeating rule is fixed to a certain repeat count. This means
+    // we'll have a cartesian product of repeat counts for each looping parser
+    // e.g. (1, 1), (1, 2), (1, 3), ..., (2, 1), (2, 1), ... aka infinite.
+    // Not all repeat counts will be valid for a certain message. We can pre-compute
+    // what's the shortest message length that a parser can match given a specific repeat count
+    // and if the shortest message length matched by the parser is longer than the input message
+    // we immediately know that increasing the repeat count won't help.
+    // By doing this early check for both repeat counts we can determine when to stop testing
+    // candidate parsers and return false if none of the parsers matched so far.
+    let p31_shortest_len = rule_shortest_matching_len(r, 31);
+    let p42_shortest_len = rule_shortest_matching_len(r, 42);
+    
+    for p_8_repeat_count in 1.. {
+        let p8_shortest_len = p_8_repeat_count * p42_shortest_len;
+        let p11_one_shortest_len = p42_shortest_len + p31_shortest_len;
+        let shortest_len = p8_shortest_len + p11_one_shortest_len;
+        if shortest_len > m.len() {
+            break
+        }
+
+        for p_11_repeat_count in 1.. {
+            let p11_shortest_len = p_11_repeat_count * p11_one_shortest_len;
+            let shortest_len = p8_shortest_len + p11_shortest_len;
+            if shortest_len > m.len() {
+                break
+            }
+
+            let mut p_8 = build_nom_parser_8(p_8_repeat_count, nom_map);
+            let mut p_11 = build_nom_parser_11(p_11_repeat_count, nom_map);
+            let res = p_8.parse(m);
+            let res = res.and_then(|(input, _output)|{
+                // dbg!((&input, &_output));
+                p_11.parse(input)
+            });
+            // dbg!(&res);
+            let res = res.map(|(input, _)| input.is_empty()).unwrap_or(false);
+            // println!("is valid: {}", res);
+            if res {
+                return res
+            }
         }
     }
     false
@@ -335,7 +379,7 @@ fn count_valid_messages_p2(s: &str) -> usize {
     messages
     .iter()
     .map(|m| {
-        let v = is_message_valid_using_nom(m, &nom_map);
+        let v = is_message_valid_using_nom(&rules, m, &nom_map);
         println!("m: {} valid: {}", m, v);
         v
     })
