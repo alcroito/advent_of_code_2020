@@ -100,6 +100,10 @@ path = "src/playground2.rs"
 name = "playground3"
 path = "src/playground3.rs"
 
+[[bin]]
+name = "playground4"
+path = "src/playground4.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
