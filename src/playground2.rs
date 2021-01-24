@@ -5,14 +5,14 @@ type Id = usize;
 #[allow(unused)]
 enum Val<'a> {
     Leaf(i32),
-    Add(Vec<&'a Val<'a>>)
+    Add(Vec<&'a Val<'a>>),
 }
 
 type RuleNodeMap<'a> = std::collections::HashMap<Id, &'a Val<'a>>;
 #[allow(unused)]
 struct RuleTree<'a> {
     arena: &'a typed_arena::Arena<Val<'a>>,
-    rule_node_map: RefCell<RuleNodeMap<'a>>
+    rule_node_map: RefCell<RuleNodeMap<'a>>,
 }
 
 impl<'a> RuleTree<'a> {
@@ -23,12 +23,8 @@ impl<'a> RuleTree<'a> {
         }
     }
 
-    fn build_rule_tree_recursive(&self, _rule_id: usize) {
-    
-    }
+    fn build_rule_tree_recursive(&self, _rule_id: usize) {}
 }
-
-
 
 fn take_tree(t: RuleTree) {
     dbg!(t.rule_node_map);

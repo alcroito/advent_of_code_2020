@@ -41,12 +41,24 @@ fn main() {
     let mut state5 = 0usize;
     let mut state6 = 0usize;
 
-    let f1: &mut MyFun1 = &mut |a:&str| {state1+=1; a};
-    let f2: &mut MyFun2 = &mut |a:&str| {a};
-    let mut f3: MyFun3 = Box::new(|a:&str| {state3+=1; a});
-    let mut f4: MyFun4 = Box::new(|a:&str| {a});
-    let f5: &mut MyFun5 = &mut |a:&str| {state5+=1; a};
-    let mut f6: MyFun6 = Box::new(|a:&str| {state6+=1; a});
+    let f1: &mut MyFun1 = &mut |a: &str| {
+        state1 += 1;
+        a
+    };
+    let f2: &mut MyFun2 = &mut |a: &str| a;
+    let mut f3: MyFun3 = Box::new(|a: &str| {
+        state3 += 1;
+        a
+    });
+    let mut f4: MyFun4 = Box::new(|a: &str| a);
+    let f5: &mut MyFun5 = &mut |a: &str| {
+        state5 += 1;
+        a
+    };
+    let mut f6: MyFun6 = Box::new(|a: &str| {
+        state6 += 1;
+        a
+    });
 
     f1(s);
     f1(s_static);

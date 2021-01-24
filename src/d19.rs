@@ -5,10 +5,10 @@ use itertools::Itertools;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nom::{Parser, combinator::recognize, multi::count};
-use nom::sequence::pair;
 use nom::branch::alt;
+use nom::sequence::pair;
 use nom::IResult;
+use nom::{combinator::recognize, multi::count, Parser};
 
 type RuleId = usize;
 type RuleSequence = Vec<RuleId>;
@@ -20,7 +20,8 @@ type RulesMap = std::collections::HashMap<RuleId, Rule>;
 
 type InputType<'a> = &'a str;
 type NomError<'a> = nom::error::Error<InputType<'a>>;
-type DynParser<'a, 't> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 't;
+type DynParser<'a, 't> =
+    dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 't;
 type BoxedParser<'a, 't> = Box<DynParser<'a, 't>>;
 type NomParserWrapperExact<'a, 't> = NomParserWrapper<BoxedParser<'a, 't>>;
 type NomParserMap<'a, 't> = std::collections::HashMap<RuleId, NomParserWrapperExact<'a, 't>>;
@@ -33,21 +34,19 @@ type NomParserMap<'a, 't> = std::collections::HashMap<RuleId, NomParserWrapperEx
 // The RefCell is necessary because nom parsers need to be mut FnMut, so we need
 // both sharing and interior mutability.
 struct NomParserWrapper<F> {
-    f: Rc<RefCell<F>>
+    f: Rc<RefCell<F>>,
 }
 
 impl<F> Clone for NomParserWrapper<F> {
     fn clone(&self) -> Self {
-        NomParserWrapper {
-            f: self.f.clone(),
-        }
+        NomParserWrapper { f: self.f.clone() }
     }
 }
 
 impl<F> NomParserWrapper<F> {
     fn new(f: F) -> Self {
         NomParserWrapper {
-            f: Rc::new(RefCell::new(f))
+            f: Rc::new(RefCell::new(f)),
         }
     }
 }
@@ -92,7 +91,9 @@ fn parse_rules_and_messages(s: &str) -> (RulesMap, Messages) {
                         .collect_vec()
                 };
                 let mut alternatives = vec![rule_sequence_collector(alternative_1_str)];
-                alternatives.extend(alternatives_it.map(|alternative| rule_sequence_collector(alternative)));
+                alternatives.extend(
+                    alternatives_it.map(|alternative| rule_sequence_collector(alternative)),
+                );
                 final_rule = Some(Rule::Alternatives(alternatives));
             }
             (rule_id, final_rule.unwrap())
@@ -145,7 +146,10 @@ fn check_if_matches_sequence(
     // If the sequence is [10, 20] and rule 10 has 1 alternative and rule 20 has 2 alternatives,
     // the iterator goes through [0, 0] and [0, 1] where the numbers represent which alternative
     // of the rule to try.
-    let cartesian_iter = sequence.iter().map(|rule_idx| 0..alt_count(r, *rule_idx)).multi_cartesian_product();
+    let cartesian_iter = sequence
+        .iter()
+        .map(|rule_idx| 0..alt_count(r, *rule_idx))
+        .multi_cartesian_product();
 
     for candidate_alternative_ids in cartesian_iter {
         let mut current_message_idx = message_idx;
@@ -160,7 +164,14 @@ fn check_if_matches_sequence(
             if sequence_rule_id == &11 {
                 // println!("looping 11");
             }
-            let (is_match, returned_message_idx) = is_message_valid(m, r, current_message_idx, *sequence_rule_id, alternative_to_apply, rules_applied);
+            let (is_match, returned_message_idx) = is_message_valid(
+                m,
+                r,
+                current_message_idx,
+                *sequence_rule_id,
+                alternative_to_apply,
+                rules_applied,
+            );
             if is_match {
                 current_message_idx = returned_message_idx;
             } else {
@@ -173,13 +184,20 @@ fn check_if_matches_sequence(
         }
 
         if valid_cartesian_choice {
-            return (true, current_message_idx)
+            return (true, current_message_idx);
         }
     }
     (false, message_idx)
 }
 
-fn is_message_valid(m: &str, r: &RulesMap, message_pos: usize, rule_id: usize, alternative_to_apply: usize, rules_applied: &mut Vec<RuleId>) -> (bool, usize) {
+fn is_message_valid(
+    m: &str,
+    r: &RulesMap,
+    message_pos: usize,
+    rule_id: usize,
+    alternative_to_apply: usize,
+    rules_applied: &mut Vec<RuleId>,
+) -> (bool, usize) {
     let rule = &r[&rule_id];
 
     // let rules_applied = format!("{},{}", rules_applied, rule_idx);
@@ -189,7 +207,7 @@ fn is_message_valid(m: &str, r: &RulesMap, message_pos: usize, rule_id: usize, a
     if message_pos >= m.len() {
         // println!("m_i too long");
         rules_applied.pop();
-        return (false, message_pos)
+        return (false, message_pos);
     }
     // println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
 
@@ -204,9 +222,13 @@ fn is_message_valid(m: &str, r: &RulesMap, message_pos: usize, rule_id: usize, a
             };
             (matches, return_pos)
         }
-        Rule::Alternatives(alternatives) => {
-            check_if_matches_sequence(m, r, &alternatives[alternative_to_apply], message_pos, rules_applied)
-        },
+        Rule::Alternatives(alternatives) => check_if_matches_sequence(
+            m,
+            r,
+            &alternatives[alternative_to_apply],
+            message_pos,
+            rules_applied,
+        ),
     };
     if !res.0 {
         rules_applied.pop();
@@ -216,33 +238,32 @@ fn is_message_valid(m: &str, r: &RulesMap, message_pos: usize, rule_id: usize, a
 }
 
 fn wrap_nom_parser<'a, F>(f: F) -> NomParserWrapper<F>
-where F: Parser<InputType<'a>, InputType<'a>, NomError<'a>> {
+where
+    F: Parser<InputType<'a>, InputType<'a>, NomError<'a>>,
+{
     NomParserWrapper::new(f)
 }
 
-fn build_nom_sequence_parser<'a: 't, 't>(r: &RulesMap, s: RuleSequenceRef)
--> BoxedParser<'a, 't>
-{
-    s.iter().map(|rule_id| build_regular_nom_parser(r, *rule_id))
-    .fold1(|prev_p, next_p| 
-        Box::new(recognize(pair(prev_p, next_p))))
-    .unwrap()
+fn build_nom_sequence_parser<'a: 't, 't>(r: &RulesMap, s: RuleSequenceRef) -> BoxedParser<'a, 't> {
+    s.iter()
+        .map(|rule_id| build_regular_nom_parser(r, *rule_id))
+        .fold1(|prev_p, next_p| Box::new(recognize(pair(prev_p, next_p))))
+        .unwrap()
 }
 
 fn build_nom_alternative_parser<'a: 't, 't>(
     prev_alternative: BoxedParser<'a, 't>,
-    next_alternative: BoxedParser<'a, 't>
-    ) 
-    -> BoxedParser<'a, 't>
-    {
+    next_alternative: BoxedParser<'a, 't>,
+) -> BoxedParser<'a, 't> {
     let alted = alt((prev_alternative, next_alternative));
     let alted: BoxedParser = Box::new(alted);
     alted
 }
 
-fn build_nom_parser_8<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParserMap<'a, 't>)
--> NomParserWrapperExact<'a, 't>
- {
+fn build_nom_parser_8<'a: 't, 'm, 't>(
+    repeat_count: usize,
+    nom_map: &'m NomParserMap<'a, 't>,
+) -> NomParserWrapperExact<'a, 't> {
     // Special case looping parser 8.
     let p = nom_map.get(&42).unwrap().clone();
     let p = recognize(p);
@@ -251,8 +272,10 @@ fn build_nom_parser_8<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParse
     wrap_nom_parser(p)
 }
 
-fn build_nom_parser_11<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParserMap<'a, 't>)
--> NomParserWrapperExact<'a, 't> {
+fn build_nom_parser_11<'a: 't, 'm, 't>(
+    repeat_count: usize,
+    nom_map: &'m NomParserMap<'a, 't>,
+) -> NomParserWrapperExact<'a, 't> {
     // Special case looping parser 11.
     let p_42 = nom_map.get(&42).unwrap().clone();
     let p_31 = nom_map.get(&31).unwrap().clone();
@@ -265,11 +288,9 @@ fn build_nom_parser_11<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomPars
     wrap_nom_parser(p)
 }
 
-// Unfortunately rust has some weird behavior / bug as described in 
+// Unfortunately rust has some weird behavior / bug as described in
 // https://github.com/rust-lang/rust/issues/79415 which is why we need the 'a: 't lifetime bound.
-fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize) 
--> BoxedParser<'a, 't>
-{
+fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize) -> BoxedParser<'a, 't> {
     let rule = &r[&rule_id];
     let res = match rule {
         Rule::Char(c) => {
@@ -277,13 +298,13 @@ fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize)
             let p: BoxedParser = Box::new(recognize(p));
             p
         }
-        Rule::Alternatives(alternatives) => {
-            alternatives.iter()
+        Rule::Alternatives(alternatives) => alternatives
+            .iter()
             .map(|sequence_rule_ids| build_nom_sequence_parser(r, sequence_rule_ids))
-            .fold1(|prev_alternative, next_alternative| 
-                build_nom_alternative_parser(prev_alternative, next_alternative))
-            .unwrap()
-        },
+            .fold1(|prev_alternative, next_alternative| {
+                build_nom_alternative_parser(prev_alternative, next_alternative)
+            })
+            .unwrap(),
     };
     res
 }
@@ -291,23 +312,27 @@ fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize)
 fn rule_shortest_matching_len(r: &RulesMap, rule_id: RuleId) -> usize {
     let rule = &r[&rule_id];
     match rule {
-        Rule::Char(_) => {
-            1
-        }
-        Rule::Alternatives(alternatives) => {
-            alternatives.iter()
-            .map(|sequence_rule_ids| 
-                sequence_rule_ids.iter().map(|seq_rule_id| rule_shortest_matching_len(r, *seq_rule_id)).sum()
-            )
-            .fold1(|prev_alternative: usize, next_alternative: usize| 
-                prev_alternative.max(next_alternative))
-            .unwrap()
-        },
+        Rule::Char(_) => 1,
+        Rule::Alternatives(alternatives) => alternatives
+            .iter()
+            .map(|sequence_rule_ids| {
+                sequence_rule_ids
+                    .iter()
+                    .map(|seq_rule_id| rule_shortest_matching_len(r, *seq_rule_id))
+                    .sum()
+            })
+            .fold1(|prev_alternative: usize, next_alternative: usize| {
+                prev_alternative.max(next_alternative)
+            })
+            .unwrap(),
     }
 }
 
-fn is_message_valid_using_nom<'a: 't, 'm, 't>(r: &RulesMap, m: &'a str, nom_map: &'m NomParserMap<'a, 't>) -> bool
-{
+fn is_message_valid_using_nom<'a: 't, 'm, 't>(
+    r: &RulesMap,
+    m: &'a str,
+    nom_map: &'m NomParserMap<'a, 't>,
+) -> bool {
     // In order to match the message with rules that have loops, we consider an instance
     // of a parser where each repeating rule is fixed to a certain repeat count. This means
     // we'll have a cartesian product of repeat counts for each looping parser
@@ -320,36 +345,35 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(r: &RulesMap, m: &'a str, nom_map:
     // candidate parsers and return false if none of the parsers matched so far.
     let p31_shortest_len = rule_shortest_matching_len(r, 31);
     let p42_shortest_len = rule_shortest_matching_len(r, 42);
-    
+
     for p_8_repeat_count in 1.. {
         let p8_shortest_len = p_8_repeat_count * p42_shortest_len;
         let p11_one_shortest_len = p42_shortest_len + p31_shortest_len;
         let shortest_len = p8_shortest_len + p11_one_shortest_len;
         if shortest_len > m.len() {
-            break
+            break;
         }
 
         for p_11_repeat_count in 1.. {
             let p11_shortest_len = p_11_repeat_count * p11_one_shortest_len;
             let shortest_len = p8_shortest_len + p11_shortest_len;
             if shortest_len > m.len() {
-                break
+                break;
             }
 
             let mut p_8 = build_nom_parser_8(p_8_repeat_count, nom_map);
             let mut p_11 = build_nom_parser_11(p_11_repeat_count, nom_map);
 
-            let res = 
-            p_8.parse(m)
-            .and_then(|(input, _output)|{
-                p_11.parse(input)
-            })
-            .map(|(input, _)| {
-                // If the input is empty, it means the parser matched the message fully.
-                input.is_empty()
-            }).unwrap_or(false);
+            let res = p_8
+                .parse(m)
+                .and_then(|(input, _output)| p_11.parse(input))
+                .map(|(input, _)| {
+                    // If the input is empty, it means the parser matched the message fully.
+                    input.is_empty()
+                })
+                .unwrap_or(false);
             if res {
-                return res
+                return res;
             }
         }
     }
@@ -378,7 +402,7 @@ fn count_valid_messages(s: &str) -> usize {
 fn count_valid_messages_p2(s: &str) -> usize {
     let (mut rules, messages) = parse_rules_and_messages(s);
     add_loop_to_rules(&mut rules);
-    
+
     // Memoize part 2 special parsers for quicker reconstruction
     // of the final parser.
     let mut nom_map = NomParserMap::new();
@@ -386,14 +410,14 @@ fn count_valid_messages_p2(s: &str) -> usize {
 
     dbg!(&messages[0]);
     messages
-    .iter()
-    .map(|m| {
-        let v = is_message_valid_using_nom(&rules, m, &nom_map);
-        println!("m: {} valid: {}", m, v);
-        v
-    })
-    .filter(|is_valid| *is_valid)
-    .count()
+        .iter()
+        .map(|m| {
+            let v = is_message_valid_using_nom(&rules, m, &nom_map);
+            println!("m: {} valid: {}", m, v);
+            v
+        })
+        .filter(|is_valid| *is_valid)
+        .count()
 }
 
 fn solve_p1() -> Result<()> {
