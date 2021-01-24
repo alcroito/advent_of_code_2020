@@ -85,9 +85,7 @@ fn parse_rules_and_messages(s: &str) -> (RulesMap, Messages) {
                         .collect_vec()
                 };
                 let mut alternatives = vec![rule_sequence_collector(alternative_1_str)];
-                for alternative in alternatives_it {
-                    alternatives.push(rule_sequence_collector(alternative));
-                }
+                alternatives.extend(alternatives_it.map(|alternative| rule_sequence_collector(alternative)));
                 final_rule = Some(Rule::Alternatives(alternatives));
             }
             (rule_id, final_rule.unwrap())
@@ -218,25 +216,19 @@ where F: Parser<InputType<'a>, InputType<'a>, NomError<'a>> {
 fn build_nom_sequence_parser<'a: 't, 't>(r: &RulesMap, s: RuleSequenceRef)
 -> BoxedParser<'a, 't>
 {
-    let mut sequence_it = s.iter();
-    let first_rule_id = sequence_it.next().unwrap();
-    let mut current_p = build_regular_nom_parser(r, *first_rule_id);
-
-    for next_sequence_rule_id in sequence_it {
-        let next_p = build_regular_nom_parser(r, *next_sequence_rule_id);
-        let sequenced = pair(current_p, next_p);
-        current_p = Box::new(recognize(sequenced));
-    }
-    current_p
+    s.iter().map(|rule_id| build_regular_nom_parser(r, *rule_id))
+    .fold1(|prev_p, next_p| 
+        Box::new(recognize(pair(prev_p, next_p))))
+    .unwrap()
 }
 
 fn build_nom_alternative_parser<'a: 't, 't>(
-    first_alternative: BoxedParser<'a, 't>,
+    prev_alternative: BoxedParser<'a, 't>,
     next_alternative: BoxedParser<'a, 't>
     ) 
     -> BoxedParser<'a, 't>
     {
-    let alted = alt((first_alternative, next_alternative));
+    let alted = alt((prev_alternative, next_alternative));
     let alted: BoxedParser = Box::new(alted);
     alted
 }
@@ -279,15 +271,11 @@ fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize)
             p
         }
         Rule::Alternatives(alternatives) => {
-            let mut alternatives_it = alternatives.iter();
-            let first_alternative_seq_ids = alternatives_it.next().unwrap();
-            let mut current_alternative = build_nom_sequence_parser(r, first_alternative_seq_ids);
-
-            for next_alternative_seq_ids in alternatives_it {
-                let next_alternative_sequence = build_nom_sequence_parser(r, next_alternative_seq_ids);
-                current_alternative = build_nom_alternative_parser(current_alternative, next_alternative_sequence);
-            }
-            current_alternative
+            alternatives.iter()
+            .map(|sequence_rule_ids| build_nom_sequence_parser(r, sequence_rule_ids))
+            .fold1(|prev_alternative, next_alternative| 
+                build_nom_alternative_parser(prev_alternative, next_alternative))
+            .unwrap()
         },
     };
     res
@@ -344,19 +332,15 @@ fn count_valid_messages_p2(s: &str) -> usize {
     prepare_part2_sub_parsers(&rules, &mut nom_map);
 
     dbg!(&messages[0]);
-    let final_count;
-    {
-        final_count = messages
-        .iter()
-        .map(|m| {
-            let v = is_message_valid_using_nom(m, &nom_map);
-            println!("m: {} valid: {}", m, v);
-            v
-        })
-        .filter(|is_valid| *is_valid)
-        .count()
-    }
-    final_count
+    messages
+    .iter()
+    .map(|m| {
+        let v = is_message_valid_using_nom(m, &nom_map);
+        println!("m: {} valid: {}", m, v);
+        v
+    })
+    .filter(|is_valid| *is_valid)
+    .count()
 }
 
 fn solve_p1() -> Result<()> {
