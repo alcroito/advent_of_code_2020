@@ -339,14 +339,15 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(r: &RulesMap, m: &'a str, nom_map:
             let mut p_8 = build_nom_parser_8(p_8_repeat_count, nom_map);
             let mut p_11 = build_nom_parser_11(p_11_repeat_count, nom_map);
 
-            let res = p_8.parse(m);
-            let res = res.and_then(|(input, _output)|{
-                // dbg!((&input, &_output));
+            let res = 
+            p_8.parse(m)
+            .and_then(|(input, _output)|{
                 p_11.parse(input)
-            });
-            // dbg!(&res);
-            let res = res.map(|(input, _)| input.is_empty()).unwrap_or(false);
-            // println!("is valid: {}", res);
+            })
+            .map(|(input, _)| {
+                // If the input is empty, it means the parser matched the message fully.
+                input.is_empty()
+            }).unwrap_or(false);
             if res {
                 return res
             }
