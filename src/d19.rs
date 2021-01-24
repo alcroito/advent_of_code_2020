@@ -6,6 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use nom::{Parser, combinator::recognize, multi::count};
+use nom::sequence::pair;
+use nom::branch::alt;
 use nom::IResult;
 
 type RuleId = usize;
@@ -228,7 +230,6 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
 
 fn build_nom_subrole_parser<'a: 't, 't>(r: &Rules, s: SubruleRef)
 -> NomParserWrapperExact<'a, 't>
-    
 {
     let mut subrule_it = s.iter();
     let first_rule_idx = subrule_it.next().unwrap();
@@ -236,7 +237,7 @@ fn build_nom_subrole_parser<'a: 't, 't>(r: &Rules, s: SubruleRef)
 
     for new_rule_idx in subrule_it {
         let new_p_boxed = Box::new(recognize(build_regular_nom_parser(r, *new_rule_idx)));
-        let sequenced = nom::sequence::pair(first_p_boxed, new_p_boxed);
+        let sequenced = pair(first_p_boxed, new_p_boxed);
         first_p_boxed = Box::new(recognize(sequenced));
     }
     nom_parser_wrapper_new(first_p_boxed)
@@ -249,7 +250,7 @@ fn build_nom_alternative_parser<'a: 't, 't>(r: &Rules,
     -> BoxedParser<'a, 't>
     {
     let new_alternative_boxed_p: BoxedParser = Box::new(recognize(build_nom_subrole_parser(r, new_alternative)));
-    let alted = nom::branch::alt((first_alternative_boxed_p, new_alternative_boxed_p));
+    let alted = alt((first_alternative_boxed_p, new_alternative_boxed_p));
     let alted: BoxedParser = Box::new(recognize(alted));
     alted
 }
@@ -258,8 +259,7 @@ fn build_nom_parser_8<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParse
 -> NomParserWrapperExact<'a, 't>
  {
     // Special case looping parser 8.
-    let p_42 = nom_map.get(&42).unwrap().clone();
-    let p = p_42;
+    let p = nom_map.get(&42).unwrap().clone();
     let p = recognize(p);
     let p = count(p, repeat_count);
     let p: BoxedParser = Box::new(recognize(p));
@@ -272,13 +272,9 @@ fn build_nom_parser_11<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomPars
     let p_42 = nom_map.get(&42).unwrap().clone();
     let p_31 = nom_map.get(&31).unwrap().clone();
 
-    let p_42 = count(p_42, repeat_count);
-    let p_42 = recognize(p_42);
-
-    let p_31 = count(p_31, repeat_count);
-    let p_31 = recognize(p_31);
-
-    let p = nom::sequence::pair(p_42, p_31);
+    let p_42 = recognize(count(p_42, repeat_count));
+    let p_31 = recognize(count(p_31, repeat_count));
+    let p = pair(p_42, p_31);
     let p: BoxedParser = Box::new(recognize(p));
 
     nom_parser_wrapper_new(p)
@@ -292,7 +288,7 @@ fn build_regular_nom_parser<'a: 't, 't>(r: &Rules, rule_idx: usize)
     let rule = &r[&rule_idx];
     let res = match rule {
         Rule::Char(c) => {
-            let p = nom::character::complete::char::<&str, nom::error::Error<&str>>(*c);
+            let p = nom::character::complete::char(*c);
             let p: BoxedParser = Box::new(recognize(p));
             NomParserWrapper::new(p)
         }
@@ -357,11 +353,6 @@ fn count_valid_messages_p2(s: &str) -> usize {
     add_loop_to_rules(&mut rules);
     let mut nom_map = NomParserMap::new();
     prepare_part2_sub_parsers(&rules, &mut nom_map);
-
-    // let p_31: NomParserWrapperExact = build_regular_nom_parser(&rules, 31);
-    // let p_42: NomParserWrapperExact = build_regular_nom_parser(&rules, 42);
-    
-    // let nom_map_rc = Rc::new(nom_map);
     dbg!(&messages[0]);
     let final_count;
     {
