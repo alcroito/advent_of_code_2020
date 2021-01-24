@@ -51,11 +51,6 @@ impl<I, O1, E, F: Parser<I, O1, E>> Parser<I, O1, E> for NomParserWrapper<F> {
     }
 }
 
-fn nom_parser_wrapper_new<'a, F>(f: F) -> NomParserWrapper<F>
-where F: Parser<InputType<'a>, InputType<'a>, NomError<'a>> {
-    NomParserWrapper::new(f)
-}
-
 #[derive(Debug, Display)]
 enum Rule {
     #[display(fmt = "{}", _0)]
@@ -215,30 +210,34 @@ fn is_message_valid(m: &str, r: &RulesMap, message_pos: usize, rule_id: usize, a
     res
 }
 
+fn wrap_nom_parser<'a, F>(f: F) -> NomParserWrapper<F>
+where F: Parser<InputType<'a>, InputType<'a>, NomError<'a>> {
+    NomParserWrapper::new(f)
+}
+
 fn build_nom_sequence_parser<'a: 't, 't>(r: &RulesMap, s: RuleSequenceRef)
--> NomParserWrapperExact<'a, 't>
+-> BoxedParser<'a, 't>
 {
     let mut sequence_it = s.iter();
     let first_rule_id = sequence_it.next().unwrap();
-    let mut current_p: BoxedParser = Box::new(recognize(build_regular_nom_parser(r, *first_rule_id)));
+    let mut current_p = build_regular_nom_parser(r, *first_rule_id);
 
     for next_sequence_rule_id in sequence_it {
-        let next_p = Box::new(recognize(build_regular_nom_parser(r, *next_sequence_rule_id)));
+        let next_p = build_regular_nom_parser(r, *next_sequence_rule_id);
         let sequenced = pair(current_p, next_p);
         current_p = Box::new(recognize(sequenced));
     }
-    nom_parser_wrapper_new(current_p)
+    current_p
 }
 
-fn build_nom_alternative_parser<'a: 't, 't>(r: &RulesMap, 
-    next_alternative_seq_ids: RuleSequenceRef,
-    first_alternative: BoxedParser<'a, 't>, 
+fn build_nom_alternative_parser<'a: 't, 't>(
+    first_alternative: BoxedParser<'a, 't>,
+    next_alternative: BoxedParser<'a, 't>
     ) 
     -> BoxedParser<'a, 't>
     {
-    let new_alternative_boxed_p: BoxedParser = Box::new(recognize(build_nom_sequence_parser(r, next_alternative_seq_ids)));
-    let alted = alt((first_alternative, new_alternative_boxed_p));
-    let alted: BoxedParser = Box::new(recognize(alted));
+    let alted = alt((first_alternative, next_alternative));
+    let alted: BoxedParser = Box::new(alted);
     alted
 }
 
@@ -250,7 +249,7 @@ fn build_nom_parser_8<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParse
     let p = recognize(p);
     let p = count(p, repeat_count);
     let p: BoxedParser = Box::new(recognize(p));
-    nom_parser_wrapper_new(p)
+    wrap_nom_parser(p)
 }
 
 fn build_nom_parser_11<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParserMap<'a, 't>)
@@ -264,30 +263,31 @@ fn build_nom_parser_11<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomPars
     let p = pair(p_42, p_31);
     let p: BoxedParser = Box::new(recognize(p));
 
-    nom_parser_wrapper_new(p)
+    wrap_nom_parser(p)
 }
 
 // Unfortunately rust has some weird behavior / bug as described in 
 // https://github.com/rust-lang/rust/issues/79415 which is why we need the 'a: 't lifetime bound.
 fn build_regular_nom_parser<'a: 't, 't>(r: &RulesMap, rule_id: usize) 
--> NomParserWrapperExact<'a, 't>
+-> BoxedParser<'a, 't>
 {
     let rule = &r[&rule_id];
     let res = match rule {
         Rule::Char(c) => {
             let p = nom::character::complete::char(*c);
             let p: BoxedParser = Box::new(recognize(p));
-            NomParserWrapper::new(p)
+            p
         }
         Rule::Alternatives(alternatives) => {
             let mut alternatives_it = alternatives.iter();
             let first_alternative_seq_ids = alternatives_it.next().unwrap();
-            let mut current_alternative: BoxedParser = Box::new(recognize(build_nom_sequence_parser(r, first_alternative_seq_ids)));
+            let mut current_alternative = build_nom_sequence_parser(r, first_alternative_seq_ids);
 
             for next_alternative_seq_ids in alternatives_it {
-                current_alternative = Box::new(recognize(build_nom_alternative_parser(r, next_alternative_seq_ids, current_alternative)));
+                let next_alternative_sequence = build_nom_sequence_parser(r, next_alternative_seq_ids);
+                current_alternative = build_nom_alternative_parser(current_alternative, next_alternative_sequence);
             }
-            NomParserWrapper::new(current_alternative)
+            current_alternative
         },
     };
     res
@@ -297,7 +297,6 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(m: &'a str, nom_map: &'m NomParser
 
  {
     let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
-
     for repeat_counts in repeat_cartesian_iter {
         let mut p_8 = build_nom_parser_8(repeat_counts[0], nom_map);
         let mut p_11 = build_nom_parser_11(repeat_counts[1], nom_map);
@@ -312,17 +311,17 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(m: &'a str, nom_map: &'m NomParser
         if res {
             return res
         }
-    
     }
-
     false
 }
 
 fn prepare_part2_sub_parsers<'a: 't, 'm, 't>(r: &RulesMap, nom_map: &'m mut NomParserMap<'a, 't>) {
     let p_31 = build_regular_nom_parser(r, 31);
+    let p_31 = wrap_nom_parser(p_31);
     nom_map.insert(31, p_31);
 
     let p_42 = build_regular_nom_parser(r, 42);
+    let p_42 = wrap_nom_parser(p_42);
     nom_map.insert(42, p_42);
 }
 
