@@ -65,4 +65,5 @@ fn main() {
     let mut compunded_parser = nom_parser_wrapper_new(parser_accumulator);
     let parsed = compunded_parser.parse("cccc");
     dbg!(parsed.is_ok());
+    
 }

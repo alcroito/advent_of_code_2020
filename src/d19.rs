@@ -254,7 +254,7 @@ fn build_nom_alternative_parser<'a>(r: &Rules,
     alted
 }
 
-fn build_nom_parser_8<'a>(repeat_count: usize, nom_map: Rc<NomParserMap<'a>>)
+fn build_nom_parser_8<'a, 'm>(repeat_count: usize, nom_map: &'m NomParserMap<'a>)
 -> NomParserWrapperExact<'a>
  {
     // Special case looping parser 8.
@@ -266,7 +266,7 @@ fn build_nom_parser_8<'a>(repeat_count: usize, nom_map: Rc<NomParserMap<'a>>)
     nom_parser_wrapper_new(p)
 }
 
-fn build_nom_parser_11<'a>(repeat_count: usize, nom_map: Rc<NomParserMap<'a>>)
+fn build_nom_parser_11<'a, 'm>(repeat_count: usize, nom_map: &'m NomParserMap<'a>)
 -> NomParserWrapperExact<'a> {
     // Special case looping parser 11.
     let p_42 = nom_map.get(&42).unwrap().clone();
@@ -308,14 +308,14 @@ fn build_regular_nom_parser<'a>(r: &Rules, rule_idx: usize)
     res
 }
 
-fn is_message_valid_using_nom<'a>(m: &'a str, nom_map: Rc<NomParserMap<'a>>) -> bool
+fn is_message_valid_using_nom<'a, 'm>(m: &'a str, nom_map: &'m NomParserMap<'a>) -> bool
 
  {
     let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
 
     for repeat_counts in repeat_cartesian_iter {
-        let mut nom_p_8 = build_nom_parser_8(repeat_counts[0], nom_map.clone());
-        let mut nom_p_11 = build_nom_parser_11(repeat_counts[1], nom_map.clone());
+        let mut nom_p_8 = build_nom_parser_8(repeat_counts[0], nom_map);
+        let mut nom_p_11 = build_nom_parser_11(repeat_counts[1], nom_map);
         let res = nom_p_8.parse(m);
         let res = res.and_then(|(input, _output)|{
             // dbg!((&input, &_output));
@@ -359,14 +359,14 @@ fn count_valid_messages_p2(s: &str) -> usize {
     // let p_31: NomParserWrapperExact = build_regular_nom_parser(&rules, 31);
     // let p_42: NomParserWrapperExact = build_regular_nom_parser(&rules, 42);
     
-    let nom_map_rc = Rc::new(nom_map);
+    // let nom_map_rc = Rc::new(nom_map);
     dbg!(&messages[0]);
     let final_count;
     {
         final_count = messages
         .iter()
         .map(|m| {
-            let v = is_message_valid_using_nom(m, nom_map_rc.clone());
+            let v = is_message_valid_using_nom(m, &nom_map);
             println!("m: {} valid: {}", m, v);
             v
         })
