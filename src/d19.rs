@@ -18,10 +18,10 @@ type Rules = std::collections::HashMap<RuleId, Rule>;
 
 type InputType<'a> = &'a str;
 type NomError<'a> = nom::error::Error<InputType<'a>>;
-type DynParser<'a> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 'a;
-type BoxedParser<'a> = Box<DynParser<'a>>;
-type NomParserWrapperExact<'a> = NomParserWrapper<BoxedParser<'a>>;
-type NomParserMap<'a> = std::collections::HashMap<RuleId, NomParserWrapperExact<'a>>;
+type DynParser<'a, 't> = dyn FnMut(InputType<'a>) -> nom::IResult<InputType<'a>, InputType<'a>> + 't;
+type BoxedParser<'a, 't> = Box<DynParser<'a, 't>>;
+type NomParserWrapperExact<'a, 't> = NomParserWrapper<BoxedParser<'a, 't>>;
+type NomParserMap<'a, 't> = std::collections::HashMap<RuleId, NomParserWrapperExact<'a, 't>>;
 
 struct NomParserWrapper<F> {
     f: Rc<RefCell<F>>
@@ -226,8 +226,8 @@ fn is_message_valid(m: &str, r: &Rules, message_idx: usize, rule_idx: usize, sub
     res
 }
 
-fn build_nom_subrole_parser<'a>(r: &Rules, s: SubruleRef)
--> NomParserWrapperExact<'a>
+fn build_nom_subrole_parser<'a: 't, 't>(r: &Rules, s: SubruleRef)
+-> NomParserWrapperExact<'a, 't>
     
 {
     let mut subrule_it = s.iter();
@@ -242,11 +242,11 @@ fn build_nom_subrole_parser<'a>(r: &Rules, s: SubruleRef)
     nom_parser_wrapper_new(first_p_boxed)
 }
 
-fn build_nom_alternative_parser<'a>(r: &Rules, 
+fn build_nom_alternative_parser<'a: 't, 't>(r: &Rules, 
     new_alternative: SubruleRef, 
-    first_alternative_boxed_p: BoxedParser<'a>, 
+    first_alternative_boxed_p: BoxedParser<'a, 't>, 
     ) 
-    -> BoxedParser<'a>
+    -> BoxedParser<'a, 't>
     {
     let new_alternative_boxed_p: BoxedParser = Box::new(recognize(build_nom_subrole_parser(r, new_alternative)));
     let alted = nom::branch::alt((first_alternative_boxed_p, new_alternative_boxed_p));
@@ -254,8 +254,8 @@ fn build_nom_alternative_parser<'a>(r: &Rules,
     alted
 }
 
-fn build_nom_parser_8<'a, 'm>(repeat_count: usize, nom_map: &'m NomParserMap<'a>)
--> NomParserWrapperExact<'a>
+fn build_nom_parser_8<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParserMap<'a, 't>)
+-> NomParserWrapperExact<'a, 't>
  {
     // Special case looping parser 8.
     let p_42 = nom_map.get(&42).unwrap().clone();
@@ -266,8 +266,8 @@ fn build_nom_parser_8<'a, 'm>(repeat_count: usize, nom_map: &'m NomParserMap<'a>
     nom_parser_wrapper_new(p)
 }
 
-fn build_nom_parser_11<'a, 'm>(repeat_count: usize, nom_map: &'m NomParserMap<'a>)
--> NomParserWrapperExact<'a> {
+fn build_nom_parser_11<'a: 't, 'm, 't>(repeat_count: usize, nom_map: &'m NomParserMap<'a, 't>)
+-> NomParserWrapperExact<'a, 't> {
     // Special case looping parser 11.
     let p_42 = nom_map.get(&42).unwrap().clone();
     let p_31 = nom_map.get(&31).unwrap().clone();
@@ -284,8 +284,10 @@ fn build_nom_parser_11<'a, 'm>(repeat_count: usize, nom_map: &'m NomParserMap<'a
     nom_parser_wrapper_new(p)
 }
 
-fn build_regular_nom_parser<'a>(r: &Rules, rule_idx: usize) 
--> NomParserWrapperExact<'a>
+// Unfortunately rust has some weird behavior / bug as described in 
+// https://github.com/rust-lang/rust/issues/79415 which is why we need the 'a: 't lifetime bound.
+fn build_regular_nom_parser<'a: 't, 't>(r: &Rules, rule_idx: usize) 
+-> NomParserWrapperExact<'a, 't>
 {
     let rule = &r[&rule_idx];
     let res = match rule {
@@ -308,7 +310,7 @@ fn build_regular_nom_parser<'a>(r: &Rules, rule_idx: usize)
     res
 }
 
-fn is_message_valid_using_nom<'a, 'm>(m: &'a str, nom_map: &'m NomParserMap<'a>) -> bool
+fn is_message_valid_using_nom<'a: 't, 'm, 't>(m: &'a str, nom_map: &'m NomParserMap<'a, 't>) -> bool
 
  {
     let repeat_cartesian_iter = vec![1..=5, 1..=5].into_iter().multi_cartesian_product();
@@ -333,7 +335,7 @@ fn is_message_valid_using_nom<'a, 'm>(m: &'a str, nom_map: &'m NomParserMap<'a>)
     false
 }
 
-fn prepare_part2_sub_parsers(r: &Rules, nom_map: &mut NomParserMap) {
+fn prepare_part2_sub_parsers<'a: 't, 'm, 't>(r: &Rules, nom_map: &'m mut NomParserMap<'a, 't>) {
     let p_31 = build_regular_nom_parser(r, 31);
     nom_map.insert(31, p_31);
 
