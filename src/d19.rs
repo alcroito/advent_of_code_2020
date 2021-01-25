@@ -120,31 +120,6 @@ fn add_loop_to_rules(r: &mut RulesMap) {
     r.insert(2000, Rule::Alternatives(vec![vec![42, 11, 31]]));
 }
 
-fn is_message_valid_using_recursive_descent_wrapper(r: &RulesMap, m: &str) -> bool {
-    let mut rules_applied = Vec::<RuleId>::new();
-    let mut rules_left = Vec::<RuleId>::new();
-    let (is_match, final_matched_idx) = is_message_valid_using_recursive_descent(
-        m,
-        r,
-        0,
-        0,
-        0,
-        &mut rules_applied,
-        &mut rules_left,
-    );
-    if !is_match {
-        return false;
-    }
-    final_matched_idx == m.len()
-}
-
-fn is_message_valid_using_list_of_suffixes_wrapper(r: &RulesMap, m: &str) -> bool {
-    // An empty message means that the recursive matcher consumed the whole message.
-    is_message_valid_using_list_of_suffixes(m, &r, 0)
-        .iter()
-        .any(|msg| msg.is_empty())
-}
-
 fn alt_count(r: &RulesMap, rule_id: usize) -> usize {
     let rule = &r[&rule_id];
     match rule {
@@ -472,6 +447,40 @@ fn prepare_part2_sub_parsers<'a: 't, 'm, 't>(r: &RulesMap, nom_map: &'m mut NomP
     nom_map.insert(42, p_42);
 }
 
+// This won't work for part 2 (and it's surprising that it works for part 1)
+// because it doesn't actually consider all possibilities.
+// That's because check_if_matches_sequence returns early when it finds a candidate
+// combination that matches some prefix. But it's possible that the suffix might
+// not be matched in which case the code won't try to consider other combinations
+// that happened after the early return.
+// is_message_valid_using_list_of_suffixes_wrapper takes to check all possible
+// branches.
+fn is_message_valid_using_recursive_descent_wrapper(r: &RulesMap, m: &str) -> bool {
+    let mut rules_applied = Vec::<RuleId>::new();
+    let mut rules_left = Vec::<RuleId>::new();
+    let (is_match, final_matched_idx) = is_message_valid_using_recursive_descent(
+        m,
+        r,
+        0,
+        0,
+        0,
+        &mut rules_applied,
+        &mut rules_left,
+    );
+    if !is_match {
+        return false;
+    }
+    final_matched_idx == m.len()
+}
+
+// Generic approach that works with any non-left recursive rules.
+fn is_message_valid_using_list_of_suffixes_wrapper(r: &RulesMap, m: &str) -> bool {
+    // An empty message means that the recursive matcher consumed the whole message.
+    is_message_valid_using_list_of_suffixes(m, &r, 0)
+        .iter()
+        .any(|msg| msg.is_empty())
+}
+
 fn count_valid_messages(s: &str) -> usize {
     let (rules, messages) = parse_rules_and_messages(s);
     messages
@@ -495,7 +504,6 @@ fn count_valid_messages_p2(s: &str) -> usize {
         .iter()
         .map(|m| {
             // let v = is_message_valid_using_nom(&rules, m, &nom_map);
-            // let v = is_message_valid_using_recursive_descent_wrapper(&rules, m);
             let v = is_message_valid_using_list_of_suffixes_wrapper(&rules, m);
             println!("m: {} valid: {:?}", m, v);
             v
