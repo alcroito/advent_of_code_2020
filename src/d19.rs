@@ -115,17 +115,34 @@ fn add_loop_to_rules(r: &mut RulesMap) {
     r.insert(1000, Rule::Alternatives(vec![vec![42, 8]]));
 
     if let Some(v) = r.get_mut(&11) {
-        *v = Rule::Alternatives(vec![vec![42, 31], vec![42, 11, 31]])
+        *v = Rule::Alternatives(vec![vec![42, 31], vec![2000]])
     };
+    r.insert(2000, Rule::Alternatives(vec![vec![42, 11, 31]]));
 }
 
-fn is_message_valid_wrapper(m: &str, r: &RulesMap) -> bool {
+fn is_message_valid_using_recursive_descent_wrapper(r: &RulesMap, m: &str) -> bool {
     let mut rules_applied = Vec::<RuleId>::new();
-    let (is_match, final_matched_idx) = is_message_valid(m, r, 0, 0, 0, &mut rules_applied);
+    let mut rules_left = Vec::<RuleId>::new();
+    let (is_match, final_matched_idx) = is_message_valid_using_recursive_descent(
+        m,
+        r,
+        0,
+        0,
+        0,
+        &mut rules_applied,
+        &mut rules_left,
+    );
     if !is_match {
         return false;
     }
     final_matched_idx == m.len()
+}
+
+fn is_message_valid_using_list_of_suffixes_wrapper(r: &RulesMap, m: &str) -> bool {
+    // An empty message means that the recursive matcher consumed the whole message.
+    is_message_valid_using_list_of_suffixes(m, &r, 0)
+        .iter()
+        .any(|msg| msg.is_empty())
 }
 
 fn alt_count(r: &RulesMap, rule_id: usize) -> usize {
@@ -139,23 +156,27 @@ fn alt_count(r: &RulesMap, rule_id: usize) -> usize {
 fn check_if_matches_sequence(
     m: &str,
     r: &RulesMap,
-    sequence: &[usize],
-    message_idx: usize,
+    sequence: RuleSequenceRef,
+    message_pos: usize,
     rules_applied: &mut Vec<RuleId>,
+    rules_left: &mut Vec<RuleId>,
 ) -> (bool, usize) {
     // If the sequence is [10, 20] and rule 10 has 1 alternative and rule 20 has 2 alternatives,
     // the iterator goes through [0, 0] and [0, 1] where the numbers represent which alternative
     // of the rule to try.
     let cartesian_iter = sequence
         .iter()
-        .map(|rule_idx| 0..alt_count(r, *rule_idx))
-        .multi_cartesian_product();
+        .map(|rule_id| 0..alt_count(r, *rule_id))
+        .multi_cartesian_product()
+        .collect_vec();
 
     for candidate_alternative_ids in cartesian_iter {
-        let mut current_message_idx = message_idx;
+        let mut current_message_pos = message_pos;
         let rules_applied_copy = rules_applied.clone();
+        let rules_left_copy = rules_left.clone();
         let mut valid_cartesian_choice = true;
 
+        rules_left.extend(sequence.iter().rev());
         for (sequence_pos, sequence_rule_id) in sequence.iter().enumerate() {
             let alternative_to_apply = candidate_alternative_ids[sequence_pos];
             if sequence_rule_id == &8 {
@@ -164,19 +185,24 @@ fn check_if_matches_sequence(
             if sequence_rule_id == &11 {
                 // println!("looping 11");
             }
-            let (is_match, returned_message_idx) = is_message_valid(
+            let (is_match, returned_message_idx) = is_message_valid_using_recursive_descent(
                 m,
                 r,
-                current_message_idx,
+                current_message_pos,
                 *sequence_rule_id,
                 alternative_to_apply,
                 rules_applied,
+                rules_left,
             );
             if is_match {
-                current_message_idx = returned_message_idx;
+                current_message_pos = returned_message_idx;
+                rules_left.pop();
             } else {
                 while rules_applied.len() != rules_applied_copy.len() {
                     rules_applied.pop();
+                }
+                while rules_left.len() != rules_left_copy.len() {
+                    rules_left.pop();
                 }
                 valid_cartesian_choice = false;
                 break;
@@ -184,32 +210,35 @@ fn check_if_matches_sequence(
         }
 
         if valid_cartesian_choice {
-            return (true, current_message_idx);
+            return (true, current_message_pos);
         }
     }
-    (false, message_idx)
+    (false, message_pos)
 }
 
-fn is_message_valid(
+fn is_message_valid_using_recursive_descent(
     m: &str,
     r: &RulesMap,
     message_pos: usize,
     rule_id: usize,
     alternative_to_apply: usize,
     rules_applied: &mut Vec<RuleId>,
+    rules_left: &mut Vec<RuleId>,
 ) -> (bool, usize) {
     let rule = &r[&rule_id];
 
     // let rules_applied = format!("{},{}", rules_applied, rule_idx);
     rules_applied.push(rule_id);
-    // println!("m_i: {:2} {:2}:{}, \n  applied: {:?} len {}", message_idx, rule_idx, rule, rules_applied, rules_applied.len());
+    // println!("m_i: {:2} {:2}:{}, \n  applied: {:?} len {}", message_pos, rule_idx, rule, rules_applied, rules_applied.len());
 
     if message_pos >= m.len() {
         // println!("m_i too long");
         rules_applied.pop();
         return (false, message_pos);
     }
-    // println!("  match:   {}      m is: {}", m.chars().nth(message_idx).unwrap(), &m[0..message_idx]);
+    // if message_pos >= m.len() - 3 {
+    // println!("  match:   {}      m is: {}", m.chars().nth(message_pos).unwrap(), &m[0..message_pos]);
+    // }
 
     let res = match rule {
         Rule::Char(c) => {
@@ -220,6 +249,9 @@ fn is_message_valid(
             } else {
                 message_pos
             };
+            if return_pos == m.len() {
+                // println!("Final char '{}' at {} mess len {}", c, return_pos, m.len());
+            }
             (matches, return_pos)
         }
         Rule::Alternatives(alternatives) => check_if_matches_sequence(
@@ -228,6 +260,7 @@ fn is_message_valid(
             &alternatives[alternative_to_apply],
             message_pos,
             rules_applied,
+            rules_left,
         ),
     };
     if !res.0 {
@@ -235,6 +268,50 @@ fn is_message_valid(
     }
     // println!("  res  :   {}", res.0);
     res
+}
+
+fn set_of_matched_messages_for_rule_id<'a>(
+    messages: Vec<&'a str>,
+    r: &RulesMap,
+    rule_id: RuleId,
+) -> Vec<&'a str> {
+    messages
+        .iter()
+        .map(|message| is_message_valid_using_list_of_suffixes(message, r, rule_id))
+        .flatten()
+        .collect_vec()
+}
+
+fn is_message_valid_using_list_of_suffixes<'a>(
+    m: &'a str,
+    r: &RulesMap,
+    rule_id: RuleId,
+) -> Vec<&'a str> {
+    if m.is_empty() {
+        return vec![];
+    }
+
+    let rule = &r[&rule_id];
+    match rule {
+        Rule::Char(ch) => {
+            if m.chars().next().unwrap() == *ch {
+                vec![&m[1..]]
+            } else {
+                vec![]
+            }
+        }
+        Rule::Alternatives(alternatives) => alternatives
+            .iter()
+            .map(|candidate_sequence| {
+                candidate_sequence
+                    .iter()
+                    .fold(vec![m], |next_messages, sequence_rule_id| {
+                        set_of_matched_messages_for_rule_id(next_messages, r, *sequence_rule_id)
+                    })
+            })
+            .flatten()
+            .collect_vec(),
+    }
 }
 
 fn wrap_nom_parser<'a, F>(f: F) -> NomParserWrapper<F>
@@ -328,6 +405,7 @@ fn rule_shortest_matching_len(r: &RulesMap, rule_id: RuleId) -> usize {
     }
 }
 
+#[allow(unused)]
 fn is_message_valid_using_nom<'a: 't, 'm, 't>(
     r: &RulesMap,
     m: &'a str,
@@ -381,6 +459,10 @@ fn is_message_valid_using_nom<'a: 't, 'm, 't>(
 }
 
 fn prepare_part2_sub_parsers<'a: 't, 'm, 't>(r: &RulesMap, nom_map: &'m mut NomParserMap<'a, 't>) {
+    if r.get(&31).is_none() || r.get(&42).is_none() {
+        return;
+    }
+
     let p_31 = build_regular_nom_parser(r, 31);
     let p_31 = wrap_nom_parser(p_31);
     nom_map.insert(31, p_31);
@@ -394,7 +476,7 @@ fn count_valid_messages(s: &str) -> usize {
     let (rules, messages) = parse_rules_and_messages(s);
     messages
         .iter()
-        .map(|m| is_message_valid_wrapper(m, &rules))
+        .map(|m| is_message_valid_using_recursive_descent_wrapper(&rules, m))
         .filter(|is_valid| *is_valid)
         .count()
 }
@@ -412,8 +494,10 @@ fn count_valid_messages_p2(s: &str) -> usize {
     messages
         .iter()
         .map(|m| {
-            let v = is_message_valid_using_nom(&rules, m, &nom_map);
-            println!("m: {} valid: {}", m, v);
+            // let v = is_message_valid_using_nom(&rules, m, &nom_map);
+            // let v = is_message_valid_using_recursive_descent_wrapper(&rules, m);
+            let v = is_message_valid_using_list_of_suffixes_wrapper(&rules, m);
+            println!("m: {} valid: {:?}", m, v);
             v
         })
         .filter(|is_valid| *is_valid)
@@ -528,8 +612,19 @@ ab"#,
 24: 14 1
 
 bbabbbbaabaabba
+babbbbaabbbbbabbbbbbaabaaabaaa
+aaabbbbbbaaaabaababaabababbabaaabbababababaaa
+bbbbbbbaaaabbbbaaabbabaaa
+bbbababbbbaaaaaaaabbababaaababaabab
+ababaaaaaabaaab
+ababaaaaabbbaba
+baabbaaaabbaaaababbaababb
+abbbbabbbbaaaababbbbbbaaaababb
+aaaaabbaabaaaaababaa
+aaaabbaabbaaaaaaabbbabbbaaabbaabaaa
+aabbbbbaabbbaaaaaabbbbbababaaaaabbaaabba
 "#,
-            1
+            12
         );
     }
 }
