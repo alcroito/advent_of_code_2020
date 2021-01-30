@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use std::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Grid<T> {
     rows: usize,
     cols: usize,
@@ -159,6 +159,14 @@ impl<'a, T> std::iter::Iterator for GridPosIter<'_, T> {
 }
 
 impl<T> Grid<T> {
+    pub fn new(rows: usize, cols: usize, elements: Vec<T>) -> Self {
+        Self {
+            rows,
+            cols,
+            g: elements,
+        }
+    }
+
     pub fn adjacent_tiles_iter(&self, pos: GridPos) -> TileNeighboursIter<T> {
         TileNeighboursIter {
             tile_pos: pos,
@@ -240,5 +248,21 @@ impl<T> Grid<T> {
             return None;
         };
         Some(&mut self[pos])
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows * self.cols
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() != 0
+    }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn cols(&self) -> usize {
+        self.cols
     }
 }
